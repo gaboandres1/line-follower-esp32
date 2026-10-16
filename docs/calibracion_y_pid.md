@@ -86,7 +86,8 @@ Definen el comportamiento. Son las que vas a ajustar en la pista.
 | `LOOP_MS` | `10` | periodo fijo del control, en ms. |
 | `LOST_ERROR` | `3.0` | error que se asume al perder la línea. |
 | `LOST_TIMEOUT_MS` | `1000` | si pierde la línea más de este tiempo, se detiene. |
-| `USE_BUMPER` / `USE_NEAR` | `false` | detenerse al chocar o al detectar un obstáculo. |
+| `USE_BUMPER` / `USE_NEAR` | `false` | detenerse al chocar o al detectar un obstáculo. El robot **queda detenido** hasta presionar BOOT. |
+| `INPUT_FILTER_N` | `3` | filtro de CLP y NEAR: cuántas lecturas activas netas hacen falta para detenerse (3 × 10 ms = 30 ms). Ver sección 4. |
 | `DEBUG_SERIAL` | `true` | imprime telemetría en el Monitor Serie. |
 
 ### 2.3 Cómo se combinan `BLACK_VALUE` y `LINE_COLOR`
@@ -123,7 +124,7 @@ Así, cambiar de pista (línea negra o blanca) **no** obliga a recalibrar el sen
 Al terminar imprime un bloque como este:
 
 ```cpp
-// ===== Copia esto en seguidor_pid.ino (sección HARDWARE) =====
+// == Copia esto en seguidor_pid / seguidor_web / seguidor_wifi (sección HARDWARE) ==
 #define BLACK_VALUE        1
 #define S1_IS_LEFT         true
 #define LEFT_CHANNEL       CH_B
@@ -133,7 +134,7 @@ Al terminar imprime un bloque como este:
 #define NEAR_ACTIVE_VALUE  0
 ```
 
-Reemplaza esas líneas en `seguidor_pid.ino`.
+Reemplaza esas líneas en el seguidor que vayas a usar: `seguidor_pid.ino`, `seguidor_web.ino` o `seguidor_wifi.ino`. Los tres usan las mismas constantes de hardware.
 
 ### Comandos sueltos
 
@@ -162,6 +163,23 @@ El sentido "+" de un canal significa INx1 = HIGH, INx2 = LOW. Es la misma conven
 3. Presiona **BOOT** en el ESP32 para arrancar. El LED azul se enciende. Presiona BOOT otra vez para detener.
 
 Mientras está detenido, el Monitor Serie muestra lo que ven los sensores: sirve para confirmar que el centro marca `[..#..]` sobre la línea.
+
+El robot se detiene solo en dos casos, y en ambos **queda detenido hasta que presiones BOOT** (no vuelve a moverse por su cuenta):
+
+- pierde la línea más de `LOST_TIMEOUT_MS`;
+- con `USE_BUMPER` / `USE_NEAR` en `true`, choca (CLP) o detecta un obstáculo (NEAR).
+
+### Filtro de CLP y NEAR
+
+Las señales del interruptor de choque y del sensor de obstáculo pueden tener rebotes o picos de ruido de una sola lectura. Para que eso no detenga el robot, ambas pasan por un **filtro integrador**:
+
+```
+cada ciclo de 10 ms:  activo   → acumulador + 1   (tope INPUT_FILTER_N)
+                      inactivo → acumulador − 1   (mínimo 0)
+se detiene cuando el acumulador llega a INPUT_FILTER_N
+```
+
+Con `INPUT_FILTER_N = 3`, un choque real se detecta en 30 ms, un pico aislado nunca llega al umbral y una señal que parpadea (activo, inactivo, activo…) tampoco se acumula. Súbelo si el NEAR da falsas alarmas; bájalo a 1 para no filtrar nada.
 
 ### Cómo calcula el error
 
@@ -230,5 +248,6 @@ Lectura de la telemetría (con el robot conectado por USB y levantado):
 | Se sale en las curvas | `BASE_SPEED` alta o `KP` bajo | baja la velocidad o sube `KP` |
 | El ESP32 se reinicia al arrancar los motores | caída de voltaje o falta de tierra común | carga las baterías, revisa el GND común, agrega un condensador de 470 µF entre 5V y GND |
 | Los motores zumban pero no giran | PWM demasiado bajo | sube `BASE_SPEED` (los motores TT necesitan ~90 para arrancar) |
+| Se detiene "por choque" sin tocar nada | ruido en CLP/NEAR o potenciómetro del NEAR | ajusta el potenciómetro, sube `INPUT_FILTER_N` o desactiva `USE_NEAR` |
 | No sube el código (`Wrong boot mode`) | modo de descarga | mantén BOOT presionado al aparecer `Connecting...` |
 | Error en `ledcAttach` | core ESP32 antiguo | el código ya es compatible con 2.x y 3.x; si persiste, actualiza el core en el Gestor de tarjetas |

@@ -2,7 +2,7 @@
  * TESTBENCH DE CALIBRACIÓN — Seguidor de línea ESP32 + BFD-1000 + L298N
  * ---------------------------------------------------------------------
  * Sirve para descubrir las CONSTANTES DE HARDWARE que luego se pegan en
- * seguidor_pid.ino:
+ * seguidor_pid.ino, seguidor_web.ino o seguidor_wifi.ino:
  *   BLACK_VALUE, S1_IS_LEFT, LEFT_CHANNEL, LEFT_INVERT, RIGHT_INVERT,
  *   CLP_ACTIVE_VALUE, NEAR_ACTIVE_VALUE
  *
@@ -11,10 +11,10 @@
  *      con el ajuste de línea en "Nueva línea".
  *   2. LEVANTA EL ROBOT (ruedas en el aire) antes de probar motores.
  *   3. Escribe 1 + Enter para el asistente guiado, o ? para ver el menú.
- *   4. Al final copia el bloque que imprime ('p') a seguidor_pid.ino.
+ *   4. Al final copia el bloque que imprime ('p') al seguidor que vayas a usar.
  */
 
-// ======================= PINES (deben coincidir con seguidor_pid.ino) =======================
+// ======================= PINES (deben coincidir con los seguidores) =========================
 const int SENSOR_PINS[5] = {21, 19, 18, 17, 16};   // S1..S5 (U1,U2,U4,U5,U6). S3 = centro
 #define CLP_PIN   22
 #define NEAR_PIN  23
@@ -282,7 +282,7 @@ void calibrateExtras() {
 }
 
 void printConfig() {
-  Serial.println("\n// ===== Copia esto en seguidor_pid.ino (sección HARDWARE) =====");
+  Serial.println("\n// == Copia esto en seguidor_pid / seguidor_web / seguidor_wifi (sección HARDWARE) ==");
   Serial.print("#define BLACK_VALUE        "); Serial.println(blackValue < 0 ? "1      // SIN CALIBRAR" : (blackValue ? "1" : "0"));
   Serial.print("#define S1_IS_LEFT         "); Serial.println(s1IsLeft < 0 ? "true   // SIN CALIBRAR" : (s1IsLeft ? "true" : "false"));
   Serial.print("#define LEFT_CHANNEL       "); Serial.println(leftCh < 0 ? "CH_A   // SIN CALIBRAR" : (leftCh == CH_A ? "CH_A" : "CH_B"));

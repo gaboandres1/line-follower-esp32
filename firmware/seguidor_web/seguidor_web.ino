@@ -79,6 +79,7 @@ const float LOST_ERROR      = 3.0;
 const unsigned long LOST_TIMEOUT_MS = 1000;
 const bool  USE_BUMPER      = true;   // CLP detiene el robot (emergencia)
 const bool  USE_NEAR        = true;   // NEAR detiene el robot (emergencia)
+const int   INPUT_FILTER_N  = 3;      // filtro de CLP/NEAR: lecturas activas netas para alarmar (3 x 10 ms)
 
 // =============================================================================
 // 3) MEMORIA (anti-sobreescritura de la flash)
@@ -191,8 +192,21 @@ void checkButton() {
   bool now = digitalRead(START_BUTTON);
   if (now != prev && millis() - t > 50) {
     t = millis(); prev = now;
-    if (now == LOW) { if (running) reqStop = true; else reqStart = true; }
+    if (now == LOW) {
+      if (running) reqStop = true;
+      else if (alarmState == AL_CLP || alarmState == AL_NEAR) alarmState = AL_NONE;  // 1ª pulsación: confirma la emergencia
+      else reqStart = true;
+    }
   }
+}
+
+// Filtro integrador para entradas digitales con ruido (CLP, NEAR): el acumulador
+// sube con cada lectura activa y baja con cada inactiva. Solo da "activo" al
+// llegar a INPUT_FILTER_N, así un pico aislado o un rebote no disparan la alarma.
+bool filterInput(uint8_t& acc, bool active) {
+  if (active) { if (acc < INPUT_FILTER_N) acc++; }
+  else if (acc > 0) acc--;
+  return acc >= INPUT_FILTER_N;
 }
 
 void controlStep() {
@@ -217,11 +231,14 @@ void controlStep() {
 
   float tp = 0, ti = 0, td = 0, u = 0; int l = 0, r = 0;
   int clp = digitalRead(CLP_PIN), nearV = digitalRead(NEAR_PIN);
+  static uint8_t clpAcc = 0, nearAcc = 0;        // se filtran siempre, para que estén al día al arrancar
+  bool clpHit  = filterInput(clpAcc,  clp == CLP_ACTIVE_VALUE);
+  bool nearHit = filterInput(nearAcc, nearV == NEAR_ACTIVE_VALUE);
   static bool wasLost = false;
 
   if (running) {
-    if (USE_BUMPER && clp == CLP_ACTIVE_VALUE)       raiseAlarm(AL_CLP);
-    else if (USE_NEAR && nearV == NEAR_ACTIVE_VALUE)  raiseAlarm(AL_NEAR);
+    if (USE_BUMPER && clpHit)       raiseAlarm(AL_CLP);
+    else if (USE_NEAR && nearHit)   raiseAlarm(AL_NEAR);
     else if (count == 0 && now - lastSeen > LOST_TIMEOUT_MS) raiseAlarm(AL_LOST);
     else {
       if (count > 0) lastSeen = now;
@@ -269,6 +286,20 @@ void controlTask(void*) {
 // ---------------- Memoria (NVS) ----------------
 void setDefaults(Params& p) { p = {DEF_KP, DEF_KI, DEF_KD, DEF_BASE, DEF_MAX, DEF_LINE}; }
 
+// Deja cada valor dentro de sus límites; si no es un número (NaN/inf) usa el de fábrica.
+// Devuelve true si tuvo que corregir algo.
+bool sanitize(Params& p) {
+  Params d, o = p; setDefaults(d);
+  p.kp   = isfinite(p.kp) ? constrain(p.kp, 0.0f, KP_LIMIT) : d.kp;
+  p.ki   = isfinite(p.ki) ? constrain(p.ki, 0.0f, KI_LIMIT) : d.ki;
+  p.kd   = isfinite(p.kd) ? constrain(p.kd, 0.0f, KD_LIMIT) : d.kd;
+  p.base = constrain(p.base, 0, 255);
+  p.maxs = constrain(p.maxs, 0, 255);
+  p.line = (p.line == LINE_WHITE) ? LINE_WHITE : LINE_BLACK;
+  return !(p.kp == o.kp && p.ki == o.ki && p.kd == o.kd &&
+           p.base == o.base && p.maxs == o.maxs && p.line == o.line);
+}
+
 void loadParams() {
   prefs.begin("robot", false);
   if (prefs.getUChar("ver", 0) != CONFIG_VERSION) {   // primera vez o versión distinta
@@ -298,7 +329,7 @@ void saveParams() {
   if (n) { saveCount++; prefs.putUInt("saves", saveCount); }
   prefs.end();
   saved = P; dirty = false; lastSave = millis(); savedThisSession = true;
-  Serial.printf("Guardado en flash (%d valores cambiados, %u guardados en total)\n", n, saveCount);
+  Serial.printf("Guardado en flash (%d valores cambiados, %lu guardados en total)\n", n, (unsigned long)saveCount);
 }
 
 void markDirty() {
@@ -309,18 +340,32 @@ void markDirty() {
 
 long saveInMs() {
   if (!dirty) return 0;
+  if (running) return -1;                        // corriendo: no se escribe la flash (se guarda al detener)
   unsigned long now = millis();
   long a = (long)SAVE_DELAY_MS - (long)(now - lastChange);
   long b = savedThisSession ? (long)SAVE_MIN_GAP_MS - (long)(now - lastSave) : 0;
   return max(0L, max(a, b));
 }
 
-void maybeSave() { if (dirty && saveInMs() == 0) saveParams(); }
+// La escritura en flash pausa ambos núcleos unos ms: solo se hace con el robot detenido.
+void maybeSave() { if (dirty && !running && saveInMs() == 0) saveParams(); }
 
 // ---------------- Servidor web ----------------
 Metrics snapshot() { Metrics m; portENTER_CRITICAL(&mux); m = M; portEXIT_CRITICAL(&mux); return m; }
 
 void bits(uint8_t v, char* out) { for (int i = 0; i < 5; i++) out[i] = (v >> (4 - i)) & 1 ? '1' : '0'; out[5] = 0; }
+
+// Copia s escapando " y \ (y quitando caracteres de control) para que no rompan el JSON
+const char* jsonEsc(const char* s, char* out, size_t n) {
+  size_t j = 0;
+  for (; *s && j + 2 < n; s++) {
+    if ((uint8_t)*s < 0x20) continue;
+    if (*s == '"' || *s == '\\') out[j++] = '\\';
+    out[j++] = *s;
+  }
+  out[j] = 0;
+  return out;
+}
 
 void sendJson(const char* s) {
   server.sendHeader("Cache-Control", "no-store");
@@ -329,18 +374,20 @@ void sendJson(const char* s) {
 
 void handleState() {
   Metrics m = snapshot(); char on[6]; bits(m.on, on);
-  char buf[420];
+  char name[70], ssid[70]; jsonEsc(ROBOT_NAME, name, sizeof name); jsonEsc(AP_SSID, ssid, sizeof ssid);
+  char buf[520];
   snprintf(buf, sizeof buf,
     "{\"name\":\"%s\",\"ssid\":\"%s\",\"run\":%d,\"alarm\":\"%s\",\"s\":\"%s\",\"e\":%.2f,\"l\":%d,\"r\":%d,"
     "\"kp\":%.2f,\"ki\":%.3f,\"kd\":%.1f,\"base\":%d,\"max\":%d,\"line\":%d,\"dirty\":%d,\"saveIn\":%ld}",
-    ROBOT_NAME, AP_SSID, running ? 1 : 0, ALARM_NAME[alarmState], on, m.err, m.l, m.r,
+    name, ssid, running ? 1 : 0, ALARM_NAME[alarmState], on, m.err, m.l, m.r,
     P.kp, P.ki, P.kd, P.base, P.maxs, P.line, dirty ? 1 : 0, saveInMs());
   sendJson(buf);
 }
 
 void handleMetrics() {
   Metrics m = snapshot(); char raw[6], on[6]; bits(m.raw, raw); bits(m.on, on);
-  char buf[900];
+  char ssid[70]; jsonEsc(AP_SSID, ssid, sizeof ssid);
+  char buf[1024];
   snprintf(buf, sizeof buf,
     "{\"fw\":\"%s\",\"up\":%lu,\"run\":%d,\"alarm\":\"%s\",\"raw\":\"%s\",\"on\":\"%s\",\"count\":%d,"
     "\"err\":%.2f,\"p\":%.2f,\"i\":%.2f,\"d\":%.2f,\"u\":%.2f,\"l\":%d,\"r\":%d,\"clp\":%d,\"near\":%d,"
@@ -353,14 +400,17 @@ void handleMetrics() {
     m.loopHz, (unsigned)m.execUs, (unsigned)m.execMaxUs, (unsigned)m.lostEvents, (unsigned)m.alarms, (unsigned)m.runMs,
     P.kp, P.ki, P.kd, P.base, P.maxs, P.line,
     (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(), WiFi.softAPgetStationNum(),
-    AP_SSID, AP_IP.toString().c_str(), DNS_NAME,
+    ssid, AP_IP.toString().c_str(), DNS_NAME,
     (unsigned)saveCount, dirty ? 1 : 0, savedThisSession ? (long)((millis() - lastSave) / 1000) : -1L);
   sendJson(buf);
 }
 
 void handleSet() {
   String k = server.arg("k");
-  float v = server.arg("v").toFloat();
+  char vbuf[24]; strlcpy(vbuf, server.arg("v").c_str(), sizeof vbuf);
+  char* end; float v = strtof(vbuf, &end);
+  // rechaza vacío, texto sobrante y NaN/inf: un NaN haría girar los motores sin control
+  if (end == vbuf || *end || !isfinite(v)) { server.send(400, "text/plain", "valor invalido"); return; }
   if      (k == "kp")   P.kp   = constrain(v, 0.0f, KP_LIMIT);
   else if (k == "ki")   P.ki   = constrain(v, 0.0f, KI_LIMIT);
   else if (k == "kd")   P.kd   = constrain(v, 0.0f, KD_LIMIT);
@@ -382,6 +432,7 @@ void handleAck() { if (!running) alarmState = AL_NONE; handleState(); }
 
 void handleReset() {
   setDefaults(P);
+  if (running) { markDirty(); handleState(); return; }   // corriendo: se guarda al detener
   prefs.begin("robot", false);
   prefs.clear();
   prefs.putUChar("ver", CONFIG_VERSION);
@@ -430,6 +481,7 @@ void setup() {
   }
   stopMotors();
   loadParams();
+  if (sanitize(P)) { Serial.println("Había valores guardados inválidos: corregidos."); saveParams(); }
   Serial.printf("Parámetros: Kp=%.2f Ki=%.3f Kd=%.1f base=%d max=%d linea=%s\n",
                 P.kp, P.ki, P.kd, P.base, P.maxs, P.line ? "blanca" : "negra");
   setupNetwork();

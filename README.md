@@ -16,6 +16,8 @@ Robot seguidor de línea con **ESP32**, sensor **BFD-1000** de 5 canales, puente
 | [`hardware`](hardware) | chasis para corte láser, planos, modelo 3D y lista de componentes |
 | [`docs`](docs) | guías detalladas y un [render de la interfaz](docs/ui_preview.html) con robot simulado |
 
+Cada carpeta de `firmware/` tiene su propio `README.md` con el uso y el comportamiento de ese firmware.
+
 ```
 seguidor-linea-esp32/
 ├── firmware/
@@ -115,7 +117,7 @@ Pega las constantes en la sección **HARDWARE** de uno de los tres sketches:
 | Arrancar / detener | botón BOOT | panel web o botón BOOT |
 | Ajustar el PID | editar el código y volver a subir | sliders en el celular, en vivo |
 | Memoria de los valores | no (están en el código) | sí, en la flash, con protección anti-sobreescritura |
-| Alertas CLP / NEAR | opcionales, solo detienen | detienen, avisan en el celular y bloquean el arranque |
+| Alertas CLP / NEAR | opcionales, filtradas; detienen hasta presionar BOOT | filtradas; detienen, avisan en el celular y bloquean el arranque hasta confirmarlas (panel o BOOT) |
 | Métricas | Monitor Serie | página `/metrics` y JSON en `/api/metrics` |
 | Red | — | `seguidor_web`: red propia del robot con DNS · `seguidor_wifi`: se une a tu red (DHCP o IP fija), sin DNS |
 
@@ -128,7 +130,7 @@ Con `seguidor_web`, conéctate a la red **MiRobot** (clave `robot1234`) y abre *
 Cada sketch separa sus constantes en dos grupos:
 
 - **Hardware** (cómo está armado *tu* robot, lo calcula el testbench): `BLACK_VALUE`, `S1_IS_LEFT`, `LEFT_CHANNEL`, `LEFT_INVERT`, `RIGHT_INVERT`, `CLP_ACTIVE_VALUE`, `NEAR_ACTIVE_VALUE`.
-- **Lógica** (cómo se comporta): `LINE_COLOR` (línea negra o blanca), `BASE_SPEED`, `MAX_SPEED` (saturación), `KP`, `KI`, `KD`, tiempos y opciones de seguridad.
+- **Lógica** (cómo se comporta): `LINE_COLOR` (línea negra o blanca), `BASE_SPEED`, `MAX_SPEED` (saturación), `KP`, `KI`, `KD`, tiempos y opciones de seguridad (`USE_BUMPER`, `USE_NEAR` y el filtro `INPUT_FILTER_N`).
 
 `seguidor_web` agrega la configuración de **red** (SSID, clave, IP, máscara /25, nombre DNS) y de **memoria** (tiempos de guardado). `seguidor_wifi` tiene la misma memoria, y en **red** pide la red a la que se conecta y si usa DHCP o IP fija (IP, puerta de enlace y máscara).
 
@@ -152,8 +154,8 @@ Valores de partida: `Kp = 45`, `Ki = 0`, `Kd = 120`, `BASE = 140`, `MAX = 210`. 
 - Variante **`seguidor_wifi`**: el robot se une a tu red WiFi (DHCP o IP fija) y el panel se abre por su IP, sin DNS.
 - Botón de arrancar/detener, sliders de velocidad y PID con botones − / + para ajustes finos.
 - Selector de línea negra o blanca.
-- Alertas de **choque (CLP)** y **obstáculo (NEAR)** que detienen el robot, hacen vibrar el celular y bloquean el arranque hasta confirmarlas.
-- Los valores se guardan en la flash solo 3 s después del último cambio y nunca más de una vez cada 10 s.
+- Alertas de **choque (CLP)** y **obstáculo (NEAR)**, con filtro anti-ruido, que detienen el robot, hacen vibrar el celular y bloquean el arranque hasta confirmarlas (en el panel o con BOOT).
+- Los valores se guardan en la flash solo 3 s después del último cambio, nunca más de una vez cada 10 s y solo con el robot detenido. Los valores inválidos se rechazan.
 - `/metrics`: gráfico del error, términos P/I/D, PWM, sensores crudos, frecuencia del lazo, memoria y guardados.
 - Sin dependencias externas: funciona sin internet. Modo claro y oscuro automático.
 

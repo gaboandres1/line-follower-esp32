@@ -67,7 +67,7 @@ Todo se configura en la sección **0) RED**:
 |---|---|
 | Punto de conexión (arriba a la derecha) | verde = conectado al robot, rojo = se perdió la conexión |
 | **Sensores** | los 5 sensores de izquierda a derecha; oscuro = ve la línea. La raya verde marca el error; se pone roja si perdió la línea. Debajo: error y PWM de cada rueda. |
-| **Arrancar / Detener** | botón principal. El botón **BOOT** del ESP32 sigue funcionando igual. |
+| **Arrancar / Detener** | botón principal. El botón **BOOT** del ESP32 también arranca y detiene (y confirma las emergencias, ver abajo). |
 | **Velocidad** | `Base` (en recta) y `Máxima` (saturación de cada motor) |
 | **Control PID** | `Kp`, `Ki`, `Kd`. Los botones − / + mueven un paso, para ajustes finos con el dedo. |
 | **Pista** | línea negra o blanca (la compuerta NOT de la lógica) |
@@ -79,11 +79,15 @@ Los cambios se aplican **al instante** al robot, incluso mientras corre.
 
 | Alerta | Cuándo | Qué pasa |
 |---|---|---|
-| **Emergencia: choque** (roja) | se presiona el CLP mientras corre | se detiene. **No se puede volver a arrancar** hasta tocar *Entendido*. El celular vibra. |
+| **Emergencia: choque** (roja) | se presiona el CLP mientras corre | se detiene. **No se puede volver a arrancar** hasta confirmarla: tocar *Entendido* en el panel o presionar **BOOT** una vez. El celular vibra. |
 | **Emergencia: obstáculo** (roja) | NEAR detecta algo mientras corre | igual que la anterior |
 | **Línea perdida** (ámbar) | más de `LOST_TIMEOUT_MS` sin ver la línea | se detiene; se puede volver a arrancar directamente |
 
-Las emergencias se activan con `USE_BUMPER` y `USE_NEAR` (ambas en `true`). Si el NEAR se dispara solo, ajusta su potenciómetro o pon `USE_NEAR = false`.
+Las emergencias se activan con `USE_BUMPER` y `USE_NEAR` (ambas en `true`). Si el NEAR se dispara solo, ajusta su potenciómetro, sube `INPUT_FILTER_N` o pon `USE_NEAR = false`.
+
+**Con BOOT, después de una emergencia:** la primera pulsación la confirma (igual que *Entendido*) y la segunda arranca. Así el robot se puede recuperar sin celular, por ejemplo con `seguidor_wifi` si se cayó la red.
+
+**Filtro:** CLP y NEAR pasan por un filtro integrador antes de disparar la alarma. Un acumulador sube con cada lectura activa y baja con cada inactiva, y la alarma salta al llegar a `INPUT_FILTER_N` (3 → 30 ms). Así un rebote o un pico de ruido no detienen el robot. Más detalles en [calibracion_y_pid.md](calibracion_y_pid.md#filtro-de-clp-y-near).
 
 ---
 
@@ -91,18 +95,20 @@ Las emergencias se activan con `USE_BUMPER` y `USE_NEAR` (ambas en `true`). Si e
 
 Los valores de `Kp`, `Ki`, `Kd`, `Base`, `Máxima` y el color de línea **se conservan al apagar el robot**. Se guardan en la memoria NVS del ESP32 con la librería `Preferences`.
 
-Un slider puede mandar decenas de cambios por segundo, así que el guardado tiene tres protecciones:
+Un slider puede mandar decenas de cambios por segundo, así que el guardado tiene cuatro protecciones:
 
 1. **En la web:** el slider envía como máximo un valor cada 150 ms mientras lo arrastras, más el valor final al soltarlo.
 2. **Espera tras el último cambio:** el robot usa el valor nuevo de inmediato (en RAM), pero solo lo escribe en flash cuando pasan **`SAVE_DELAY_MS` = 3 s** sin cambios nuevos.
 3. **Intervalo mínimo:** nunca guarda dos veces en menos de **`SAVE_MIN_GAP_MS` = 10 s**.
+4. **Solo con el robot detenido:** escribir la flash pausa los dos núcleos del ESP32 unos milisegundos, también la tarea del PID. Por eso, mientras el robot corre, los cambios se aplican pero **no se guardan**. El pie del panel dice *"Se guardará al detener el robot"* y el guardado se hace en cuanto se detiene.
 
 Además, **solo escribe las claves cuyo valor cambió**, y no escribe nada si volviste al valor que ya estaba guardado.
 
 En una simulación, 40 movimientos del slider en 2 segundos produjeron **un solo guardado**. El pie del panel muestra *"Guardando en 3 s…"* y luego *"✓ Valores guardados"*. En **Métricas** puedes ver cuántas veces se ha guardado en total.
 
 Otros detalles:
-- **Restaurar valores** vuelve a los `DEF_…` del código y borra lo guardado.
+- **Restaurar valores** vuelve a los `DEF_…` del código y borra lo guardado. Si el robot está corriendo, los valores cambian al instante y se guardan al detenerlo.
+- **Valores inválidos:** el robot rechaza cualquier valor que no sea un número (vacío, texto, `nan`, `inf`). Al encender también revisa lo guardado: si algo está fuera de rango o no es un número, lo corrige y avisa por el Monitor Serie.
 - **Subir el sketch otra vez no borra lo guardado.** Si cambias el significado de algún valor guardado, sube `CONFIG_VERSION` en 1: al arrancar, el robot borra los datos viejos y usa los valores por defecto.
 - Si apagas el robot justo después de mover un slider (antes de que diga *Guardado*), ese último cambio se pierde.
 
@@ -135,14 +141,14 @@ Todas las rutas responden JSON con el estado actualizado.
 | POST | `/api/ack` | confirmar la alerta |
 | POST | `/api/reset` | restaurar los valores por defecto |
 
-El robot vuelve a limitar todos los valores que recibe (`KP_LIMIT`, etc.), aunque alguien los mande por fuera del panel.
+El robot vuelve a limitar todos los valores que recibe (`KP_LIMIT`, etc.), aunque alguien los mande por fuera del panel. Si `v` no es un número válido (vacío, texto, `nan`, `inf`), responde **400** y no cambia nada.
 
 ---
 
 ## 7. Cómo está organizado el programa
 
 - **El control PID corre en una tarea propia** de FreeRTOS, fijada al núcleo 1 con prioridad alta y periodo exacto de 10 ms (`vTaskDelayUntil`). Así el WiFi y las páginas web no alteran el ritmo del control.
-- **El servidor web, el DNS y el guardado** corren en `loop()`.
+- **El servidor web, el DNS y el guardado** corren en `loop()`. El guardado espera a que el robot esté detenido, porque escribir la flash pausa ambos núcleos.
 - Las métricas pasan de una tarea a otra en una copia protegida (`portENTER_CRITICAL`), para que nunca se lean a medio escribir.
 - El panel no usa internet: no carga fuentes ni librerías externas, porque la red del robot no tiene salida.
 
@@ -186,6 +192,7 @@ Es el mismo programa (control PID, panel, métricas, memoria y API idénticos), 
 | `STATIC_GW` | `192.168.1.1` | puerta de enlace: la IP del router |
 | `STATIC_MASK` | `255.255.255.0` | máscara de la red |
 | `WIFI_CONNECT_WAIT_MS` | `15000` | cuánto espera al encender antes de seguir sin red |
+| `WIFI_RETRY_MS` | `30000` | si pasa este tiempo sin red, fuerza un reintento de conexión (respaldo de la reconexión automática) |
 | `STOP_ON_WIFI_LOSS` | `true` | si se cae el WiFi con el robot corriendo, lo detiene |
 | `ROBOT_NAME` | `mirobot` | nombre del panel y del equipo en la lista de clientes del router |
 
@@ -200,8 +207,8 @@ Es el mismo programa (control PID, panel, métricas, memoria y API idénticos), 
 3. Desde cualquier equipo **conectado a la misma red**, abre `http://192.168.1.37`.
 
 - **Enter en el Monitor Serie** vuelve a imprimir la IP en cualquier momento.
-- Si se cae la red, el ESP32 **reconecta solo** y vuelve a imprimir la IP al recuperarla.
-- Sin WiFi el robot sigue funcionando con el botón **BOOT**.
+- Si se cae la red, el ESP32 **reconecta solo** y vuelve a imprimir la IP al recuperarla. Si a los `WIFI_RETRY_MS` (30 s) sigue sin red, fuerza un reintento.
+- Sin WiFi el robot sigue funcionando con el botón **BOOT**, incluso para confirmar una emergencia.
 
 ### DHCP o IP fija
 

@@ -64,6 +64,7 @@ const unsigned long LOST_TIMEOUT_MS = 1000;  // si pierde la línea más de esto
 
 const bool USE_BUMPER = false;    // true: se detiene si se presiona CLP
 const bool USE_NEAR   = false;    // true: se detiene ante un obstáculo
+const int  INPUT_FILTER_N = 3;    // filtro de CLP/NEAR: lecturas activas netas para detenerse (3 x 10 ms)
 const bool DEBUG_SERIAL = true;   // imprime telemetría por el Monitor Serie
 const int  DEBUG_EVERY  = 10;     // imprime 1 de cada N ciclos (10 x 10 ms = cada 100 ms)
 
@@ -83,6 +84,7 @@ bool  justStarted = false;           // evita el salto del derivativo en el prim
 float lastError = 0, integral = 0;
 unsigned long lastLoop = 0, lastSeen = 0;
 int debugCount = 0;
+uint8_t clpAcc = 0, nearAcc = 0;     // acumuladores del filtro de CLP y NEAR
 
 // ---------------- PWM compatible con core 2.x y 3.x ----------------
 void pwmInit(int ch) {
@@ -151,10 +153,20 @@ float computeError(const bool onLine[5], int count) {
   return sum / count;
 }
 
+// Filtro integrador para entradas digitales con ruido (CLP, NEAR): el acumulador
+// sube con cada lectura activa y baja con cada inactiva. Solo da "activo" al
+// llegar a INPUT_FILTER_N, así un pico aislado o un rebote no detienen el robot.
+bool filterInput(uint8_t& acc, bool active) {
+  if (active) { if (acc < INPUT_FILTER_N) acc++; }
+  else if (acc > 0) acc--;
+  return acc >= INPUT_FILTER_N;
+}
+
+// Se llama en cada ciclo (también detenido) para que el filtro esté al día.
 bool obstacle() {
-  if (USE_BUMPER && digitalRead(CLP_PIN) == CLP_ACTIVE_VALUE) return true;
-  if (USE_NEAR && digitalRead(NEAR_PIN) == NEAR_ACTIVE_VALUE) return true;
-  return false;
+  bool clpHit  = filterInput(clpAcc,  digitalRead(CLP_PIN)  == CLP_ACTIVE_VALUE);
+  bool nearHit = filterInput(nearAcc, digitalRead(NEAR_PIN) == NEAR_ACTIVE_VALUE);
+  return (USE_BUMPER && clpHit) || (USE_NEAR && nearHit);
 }
 
 // ---------------- Arranque / parada con BOOT ----------------
@@ -211,13 +223,18 @@ void loop() {
 
   bool onLine[5];
   int count = readLine(onLine);
+  bool hit = obstacle();
 
   if (!running) {                         // detenido: solo muestra lo que ven los sensores
     debugPrint(onLine, computeError(onLine, count), 0, 0, 0);
     return;
   }
 
-  if (obstacle()) { stopMotors(); return; }
+  if (hit) {                              // choque u obstáculo: se queda detenido hasta presionar BOOT
+    running = false; stopMotors(); digitalWrite(LED_PIN, LOW);
+    Serial.println(">> CHOQUE / OBSTÁCULO: detenido. Presiona BOOT para seguir.");
+    return;
+  }
 
   if (count > 0) lastSeen = now;
   else if (now - lastSeen > LOST_TIMEOUT_MS) {   // perdió la línea demasiado tiempo

@@ -64,6 +64,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
   }
   function saveIn() {
     if (!S.dirty) return 0;
+    if (S.run) return -1;   // como el robot: no guarda mientras corre
     const now = Date.now();
     return Math.max(0, 3000 - (now - S.lastChange), 10000 - (now - S.lastSave));
   }

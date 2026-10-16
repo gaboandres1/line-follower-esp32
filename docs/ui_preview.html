@@ -136,6 +136,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
   }
   function saveIn() {
     if (!S.dirty) return 0;
+    if (S.run) return -1;   // como el robot: no guarda mientras corre
     const now = Date.now();
     return Math.max(0, 3000 - (now - S.lastChange), 10000 - (now - S.lastSave));
   }
@@ -322,7 +323,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
     document.querySelectorAll("#p-line button").forEach(b => b.classList.toggle("sel", +b.dataset.v === s.line));
     // guardado
     const sv = $("p-save");
-    if (s.dirty) { sv.className = ""; sv.textContent = `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
+    if (s.dirty) { sv.className = ""; sv.textContent = s.saveIn < 0 ? "Se guardará al detener el robot" : `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
     else { sv.className = "ok"; sv.textContent = "✓ Valores guardados"; }
   }
   function poll() {

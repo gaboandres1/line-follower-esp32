@@ -189,7 +189,7 @@ $("p-" + k).value = s[k]; show(k, s[k]);
 document.querySelectorAll("#p-line button").forEach(b => b.classList.toggle("sel", +b.dataset.v === s.line));
 // guardado
 const sv = $("p-save");
-if (s.dirty) { sv.className = ""; sv.textContent = `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
+if (s.dirty) { sv.className = ""; sv.textContent = s.saveIn < 0 ? "Se guardará al detener el robot" : `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
 else { sv.className = "ok"; sv.textContent = "✓ Valores guardados"; }
 }
 function poll() {
