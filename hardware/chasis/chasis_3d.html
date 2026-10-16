@@ -1,0 +1,336 @@
+<title>Chasis Seguidor de Línea</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: tapete de corte verde con cuadrícula; visor 3D a la izquierda, ficha de componentes a la derecha */
+:root {
+  --mat: #e4ebe5;        /* tapete de corte, claro */
+  --mat-line: #cdd8cf;
+  --panel: #f6f8f5;
+  --ink: #17231d;
+  --muted: #5a6b61;
+  --laser: #d6362b;      /* rojo de línea de corte */
+  --edge: #b9c6bc;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Barlow", "Segoe UI", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --mat: #14241e; --mat-line: #1f362d; --panel: #1a2c25; --ink: #e3ece6; --muted: #97aa9f; --laser: #ff6a5c; --edge: #2c463b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --mat: #14241e; --mat-line: #1f362d; --panel: #1a2c25; --ink: #e3ece6; --muted: #97aa9f; --laser: #ff6a5c; --edge: #2c463b; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--mat); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  background-image: linear-gradient(var(--mat-line) 1px, transparent 1px), linear-gradient(90deg, var(--mat-line) 1px, transparent 1px);
+  background-size: 24px 24px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw, 38px); line-height: 1.05; margin: 0; letter-spacing: .01em; text-wrap: balance }
+h1 span { color: var(--laser) }
+.spec { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.stage { position: relative; background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; min-width: 0 }
+canvas { display: block; width: 100%; height: clamp(340px, 62vh, 620px); touch-action: none; cursor: grab }
+canvas:active { cursor: grabbing }
+.views { position: absolute; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 20px) }
+.views button, .tog { font: 500 12.5px var(--f-body); color: var(--ink); background: var(--mat); border: 1px solid var(--edge);
+  border-radius: 4px; padding: 5px 10px; cursor: pointer }
+.views button[aria-pressed="true"] { border-color: var(--laser); color: var(--laser) }
+.views button:focus-visible, .tog:focus-visible, .legend button:focus-visible { outline: 2px solid var(--laser); outline-offset: 2px }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--panel); font: 500 12px var(--f-body);
+  padding: 4px 8px; border-radius: 3px; white-space: nowrap }
+.hint { position: absolute; right: 10px; bottom: 8px; font-size: 12px; color: var(--muted) }
+aside { display: grid; gap: 16px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; padding: 14px 16px }
+h2 { font-family: var(--f-display); font-size: 13px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 10px; color: var(--muted) }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.legend button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 5px 6px; border-radius: 4px; cursor: pointer }
+.legend button:hover, .legend button.on { background: var(--mat) }
+.sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.25) }
+.dim { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right }
+.heights { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 12px; margin: 0 }
+.heights dt { color: var(--muted); font-size: 13.5px }
+.heights dd { margin: 0; font-family: var(--f-mono); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right }
+.heights dd b { color: var(--laser); font-weight: 500 }
+.note { font-size: 13px; color: var(--muted); margin: 10px 0 0 }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Chasis seguidor de línea <span>·</span> ESP32 + BFD-1000</h1>
+    <div class="spec">MDF 3 mm · tabla 150 × 190 · ruedas 65 × 26 · 2 × 18650</div>
+  </header>
+  <div class="main">
+    <div class="stage">
+      <canvas id="cv" aria-label="Modelo 3D del robot; arrastra para girar"></canvas>
+      <div class="views" role="group" aria-label="Vistas">
+        <button id="v-iso" data-v="iso" aria-pressed="true">Isométrica</button>
+        <button id="v-top" data-v="top" aria-pressed="false">Superior</button>
+        <button id="v-side" data-v="side" aria-pressed="false">Lateral</button>
+        <button id="v-front" data-v="front" aria-pressed="false">Frontal</button>
+        <button id="v-under" data-v="under" aria-pressed="false">Por debajo</button>
+      </div>
+      <div class="tip" id="tip" hidden></div>
+      <div class="hint">Arrastra para girar · rueda o pellizco para acercar</div>
+    </div>
+    <aside>
+      <div class="card">
+        <h2>Componentes</h2>
+        <ul class="legend" id="legend"></ul>
+      </div>
+      <div class="card">
+        <h2>Alturas desde el piso</h2>
+        <dl class="heights">
+          <dt>Cara inferior de la base</dt><dd><b>43.75</b> mm</dd>
+          <dt>Eje de las ruedas</dt><dd>32.5 mm</dd>
+          <dt>Rueda loca (34 + 3 separadores)</dt><dd>43 mm</dd>
+          <dt>Sensores BFD-1000</dt><dd><b>32.75</b> mm</dd>
+          <dt>Eje de ruedas → sensores</dt><dd>101 mm</dd>
+        </dl>
+        <p class="note">Una sola tabla de MDF: motores, rueda loca y sensor van pegados por debajo; batería, L298N y ESP32 por encima.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const SCENE = [{"t": "box", "x": -75.0, "y": 0, "z": 43.75, "w": 150.0, "l": 35.0, "h": 3.0, "c": "#d9b382", "n": "Base MDF", "g": "base"}, {"t": "box", "x": -55.0, "y": 35.0, "z": 43.75, "w": 110.0, "l": 70.0, "h": 3.0, "c": "#d9b382", "n": "Base MDF", "g": "base"}, {"t": "box", "x": -75.0, "y": 105.0, "z": 43.75, "w": 150.0, "l": 85.0, "h": 3.0, "c": "#d9b382", "n": "Base MDF", "g": "base"}, {"t": "box", "x": -55.0, "y": 11.5, "z": 21.25, "w": 19.0, "l": 70.0, "h": 22.5, "c": "#f2c418", "n": "Motor TT", "g": "motor"}, {"t": "cyl", "x": -70.0, "y": 70.0, "z": 32.5, "r": 32.5, "L": 26.0, "c": "#2b2b2b", "n": "Rueda 65 mm", "ri": 20, "g": "wheel"}, {"t": "cyl", "x": -70.0, "y": 70.0, "z": 32.5, "r": 20, "L": 26.6, "c": "#f2c418", "n": "Rin", "g": "wheel"}, {"t": "box", "x": 36.0, "y": 11.5, "z": 21.25, "w": 19.0, "l": 70.0, "h": 22.5, "c": "#f2c418", "n": "Motor TT", "g": "motor"}, {"t": "cyl", "x": 70.0, "y": 70.0, "z": 32.5, "r": 32.5, "L": 26.0, "c": "#2b2b2b", "n": "Rueda 65 mm", "ri": 20, "g": "wheel"}, {"t": "cyl", "x": 70.0, "y": 70.0, "z": 32.5, "r": 20, "L": 26.6, "c": "#f2c418", "n": "Rin", "g": "wheel"}, {"t": "box", "x": -21.5, "y": 13.0, "z": 49.75, "w": 43.0, "l": 43.0, "h": 1.6, "c": "#c8322b", "n": "L298N", "g": "l298"}, {"t": "box", "x": 4.5, "y": 19.0, "z": 51.35, "w": 4, "l": 31, "h": 25, "c": "#222", "n": "Disipador", "g": "l298"}, {"t": "box", "x": -19.5, "y": 14.0, "z": 51.35, "w": 10, "l": 8, "h": 10, "c": "#2a78d0", "n": "Bornera", "g": "l298"}, {"t": "box", "x": -19.5, "y": 47.0, "z": 51.35, "w": 10, "l": 8, "h": 10, "c": "#2a78d0", "n": "Bornera", "g": "l298"}, {"t": "box", "x": -17.5, "y": 29.0, "z": 51.35, "w": 9, "l": 12, "h": 10, "c": "#2a78d0", "n": "Bornera potencia", "g": "l298"}, {"t": "box", "x": -20.5, "y": 14.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": 12.5, "y": 14.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": -20.5, "y": 47.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": 12.5, "y": 47.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": -38.0, "y": 58.0, "z": 46.75, "w": 76.0, "l": 41.1, "h": 2, "c": "#3a3a3a", "n": "Portapilas 2x18650", "g": "bat"}, {"t": "box", "x": -38.0, "y": 58.0, "z": 48.75, "w": 4, "l": 41.1, "h": 16.3, "c": "#3a3a3a", "n": "Portapilas 2x18650", "g": "bat"}, {"t": "box", "x": 34.0, "y": 58.0, "z": 48.75, "w": 4, "l": 41.1, "h": 16.3, "c": "#3a3a3a", "n": "Portapilas 2x18650", "g": "bat"}, {"t": "cyl", "x": 0, "y": 69.09700000000001, "z": 57.75, "r": 9, "L": 66, "c": "#2f6db5", "n": "Celda 18650", "g": "bat"}, {"t": "cyl", "x": 0, "y": 88.003, "z": 57.75, "r": 9, "L": 66, "c": "#2f6db5", "n": "Celda 18650", "g": "bat"}, {"t": "box", "x": -34.3, "y": 102.0, "z": 49.75, "w": 68.6, "l": 53.4, "h": 1.6, "c": "#1c1c1c", "n": "ESP32 + shield", "g": "esp"}, {"t": "box", "x": -28.299999999999997, "y": 115.0, "z": 51.35, "w": 55, "l": 28, "h": 9, "c": "#111", "n": "Zócalos", "g": "esp"}, {"t": "box", "x": -26.299999999999997, "y": 117.0, "z": 60.35, "w": 51, "l": 26, "h": 1.6, "c": "#1a1a1a", "n": "ESP32 DevKit", "g": "esp"}, {"t": "box", "x": -9.299999999999997, "y": 118.0, "z": 61.95, "w": 18, "l": 24, "h": 3, "c": "#b8b8b8", "n": "Módulo WROOM-32", "g": "esp"}, {"t": "box", "x": 26.299999999999997, "y": 126.0, "z": 61.95, "w": 8, "l": 9, "h": 3.2, "c": "#cfcfcf", "n": "USB-C", "g": "esp"}, {"t": "box", "x": -33.3, "y": 103.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": 25.299999999999997, "y": 103.0, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": -33.3, "y": 146.4, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": 25.299999999999997, "y": 146.4, "z": 46.75, "w": 8, "l": 8, "h": 3.0, "c": "#e6c9a0", "n": "Separador", "g": "spacer"}, {"t": "box", "x": -64.5, "y": 160.0, "z": 42.15, "w": 129.0, "l": 22.0, "h": 1.6, "c": "#1f4fbf", "n": "BFD-1000", "g": "sensor"}, {"t": "box", "x": -20.0, "y": 182.0, "z": 42.15, "w": 40.0, "l": 34.0, "h": 1.6, "c": "#1f4fbf", "n": "BFD-1000", "g": "sensor"}, {"t": "box", "x": -53, "y": 168.0, "z": 32.75, "w": 6, "l": 6, "h": 9.399999999999999, "c": "#111", "n": "Sensor S1", "g": "sensor"}, {"t": "box", "x": -28, "y": 168.0, "z": 32.75, "w": 6, "l": 6, "h": 9.399999999999999, "c": "#111", "n": "Sensor S2", "g": "sensor"}, {"t": "box", "x": -3, "y": 168.0, "z": 32.75, "w": 6, "l": 6, "h": 9.399999999999999, "c": "#111", "n": "Sensor S3", "g": "sensor"}, {"t": "box", "x": 22, "y": 168.0, "z": 32.75, "w": 6, "l": 6, "h": 9.399999999999999, "c": "#111", "n": "Sensor S4", "g": "sensor"}, {"t": "box", "x": 47, "y": 168.0, "z": 32.75, "w": 6, "l": 6, "h": 9.399999999999999, "c": "#111", "n": "Sensor S5", "g": "sensor"}, {"t": "box", "x": -22.0, "y": 4.0, "z": 34, "w": 44.0, "l": 44.0, "h": 9.75, "c": "#e6c9a0", "n": "Separadores rueda loca", "g": "spacer"}, {"t": "box", "x": -22.0, "y": 4.0, "z": 32.5, "w": 44.0, "l": 44.0, "h": 1.5, "c": "#b9bdc2", "n": "Rueda loca", "g": "caster"}, {"t": "box", "x": -11.0, "y": 20.0, "z": 14, "w": 3, "l": 14, "h": 18.5, "c": "#b9bdc2", "n": "Rueda loca", "g": "caster"}, {"t": "box", "x": 8.0, "y": 20.0, "z": 14, "w": 3, "l": 14, "h": 18.5, "c": "#b9bdc2", "n": "Rueda loca", "g": "caster"}, {"t": "cyl", "x": 0.0, "y": 22.0, "z": 12.5, "r": 12.5, "L": 16, "c": "#f0f0f0", "n": "Rueda loca", "g": "caster"}];
+const GROUPS = [{"g": "base", "name": "Tabla MDF", "dims": "150×190×3", "color": "#d9b382"}, {"g": "bat", "name": "Portapilas 2×18650", "dims": "76×41×18", "color": "#2f6db5"}, {"g": "l298", "name": "L298N", "dims": "43×43×27", "color": "#c8322b"}, {"g": "esp", "name": "ESP32 + shield", "dims": "69×53×22", "color": "#1c1c1c"}, {"g": "motor", "name": "Motores TT (debajo)", "dims": "70×19×22.5", "color": "#f2c418"}, {"g": "wheel", "name": "Ruedas", "dims": "65×26", "color": "#2b2b2b"}, {"g": "sensor", "name": "BFD-1000 (debajo)", "dims": "129×56×11", "color": "#1f4fbf"}, {"g": "caster", "name": "Rueda loca", "dims": "Ø25, alto 34", "color": "#b9bdc2"}, {"g": "spacer", "name": "Separadores", "dims": "3 mm c/u", "color": "#e6c9a0"}];
+
+// ---------- geometría: cada pieza -> polígonos 3D con normal ----------
+const TILE = 8;
+const polys = [];
+function addQuad(p0, eu, ev, n, color, part) {
+  // cara rectangular p0 + u*eu + v*ev, subdividida en losetas para un orden de pintado estable
+  const lu = Math.hypot(...eu), lv = Math.hypot(...ev);
+  const nu = Math.max(1, Math.ceil(lu / TILE)), nv = Math.max(1, Math.ceil(lv / TILE));
+  for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+    const a = i / nu, b = (i + 1) / nu, c = j / nv, d = (j + 1) / nv;
+    const P = (s, t) => [p0[0] + eu[0]*s + ev[0]*t, p0[1] + eu[1]*s + ev[1]*t, p0[2] + eu[2]*s + ev[2]*t];
+    polys.push({ v: [P(a,c), P(b,c), P(b,d), P(a,d)], n, color, part });
+  }
+}
+function addBox(o, part) {
+  const { x, y, z, w, l, h, c } = o;
+  addQuad([x, y, z+h], [w,0,0], [0,l,0], [0,0,1], c, part);
+  addQuad([x, y, z], [w,0,0], [0,l,0], [0,0,-1], c, part);
+  addQuad([x, y, z], [w,0,0], [0,0,h], [0,-1,0], c, part);
+  addQuad([x, y+l, z], [w,0,0], [0,0,h], [0,1,0], c, part);
+  addQuad([x, y, z], [0,l,0], [0,0,h], [-1,0,0], c, part);
+  addQuad([x+w, y, z], [0,l,0], [0,0,h], [1,0,0], c, part);
+}
+function addCyl(o, part, axis) {  // eje X o Y
+  const N = 28, { x, y, z, r, L, c } = o;
+  const pt = (ang, s) => axis === "x"
+    ? [x + s, y + r*Math.cos(ang), z + r*Math.sin(ang)]
+    : [x + r*Math.cos(ang), y + s, z + r*Math.sin(ang)];
+  const nrm = (ang) => axis === "x" ? [0, Math.cos(ang), Math.sin(ang)] : [Math.cos(ang), 0, Math.sin(ang)];
+  for (let k = 0; k < N; k++) {
+    const a0 = 2*Math.PI*k/N, a1 = 2*Math.PI*(k+1)/N, am = (a0+a1)/2;
+    polys.push({ v: [pt(a0,-L/2), pt(a1,-L/2), pt(a1,L/2), pt(a0,L/2)], n: nrm(am), color: c, part });
+    for (const s of [-1, 1]) {
+      const n = axis === "x" ? [s,0,0] : [0,s,0];
+      const ri = o.ri || 0, ptr = (ang, rr) => axis === "x"
+        ? [x + s*L/2, y + rr*Math.cos(ang), z + rr*Math.sin(ang)]
+        : [x + rr*Math.cos(ang), y + s*L/2, z + rr*Math.sin(ang)];
+      const rings = ri ? [ri, r] : [0, r*0.5, r];
+      for (let q = 0; q < rings.length - 1; q++)
+        polys.push({ v: [ptr(a0, rings[q]), ptr(a0, rings[q+1]), ptr(a1, rings[q+1]), ptr(a1, rings[q])], n, color: c, part, cap: true });
+    }
+  }
+}
+function addSphere(o, part) {
+  const { x, y, z, r, c } = o, NU = 16, NV = 10;
+  const P = (u, v) => [x + r*Math.cos(v)*Math.cos(u), y + r*Math.cos(v)*Math.sin(u), z + r*Math.sin(v)];
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+    const u0 = 2*Math.PI*i/NU, u1 = 2*Math.PI*(i+1)/NU, v0 = -Math.PI/2 + Math.PI*j/NV, v1 = -Math.PI/2 + Math.PI*(j+1)/NV;
+    const um = (u0+u1)/2, vm = (v0+v1)/2;
+    polys.push({ v: [P(u0,v0), P(u1,v0), P(u1,v1), P(u0,v1)], n: [Math.cos(vm)*Math.cos(um), Math.cos(vm)*Math.sin(um), Math.sin(vm)], color: c, part });
+  }
+}
+SCENE.forEach((o, i) => {
+  if (o.t === "box") addBox(o, i);
+  else if (o.t === "cyl") addCyl(o, i, "x");
+  else if (o.t === "cylY") addCyl(o, i, "y");
+  else if (o.t === "sph") addSphere(o, i);
+});
+// quitar caras pegadas a otra pieza (nunca se ven y confunden el orden de pintado)
+{
+  const boxes = SCENE.filter(o => o.t === "box");
+  const inBox = (p, b) => p[0] > b.x && p[0] < b.x + b.w && p[1] > b.y && p[1] < b.y + b.l && p[2] > b.z && p[2] < b.z + b.h;
+  for (let i = polys.length - 1; i >= 0; i--) {
+    const p = polys[i]; if (p.cap) continue;
+    const c = p.v.reduce((s, q) => [s[0]+q[0], s[1]+q[1], s[2]+q[2]], [0,0,0]).map(a => a / p.v.length);
+    // la loseta se quita solo si queda cubierta por completo por una misma pieza
+    const pts = p.v.map(v => [v[0] + (c[0]-v[0])*0.02 + p.n[0]*0.4, v[1] + (c[1]-v[1])*0.02 + p.n[1]*0.4, v[2] + (c[2]-v[2])*0.02 + p.n[2]*0.4]);
+    if (boxes.some(b => SCENE[p.part] !== b && pts.every(q => inBox(q, b)))) polys.splice(i, 1);
+  }
+}
+
+// ---------- cámara ----------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const TARGET = [0, 105, 28];
+const VIEWS = { iso: [-2.3, 0.5, 470], top: [0, 1.52, 560], side: [-Math.PI/2, 0.02, 520], front: [Math.PI, 0.1, 470], under: [-2.3, -0.6, 520] };
+let yaw = VIEWS.iso[0], pitch = VIEWS.iso[1], dist = VIEWS.iso[2];
+let anim = null, hoverPart = -1, hiGroup = null;
+const LIGHT = norm([-0.45, -0.55, 0.85]);
+function norm(v) { const m = Math.hypot(...v); return v.map(a => a/m) }
+function hexRGB(h) { const n = parseInt(h.slice(1), 16); return [n>>16 & 255, n>>8 & 255, n & 255] }
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function toView(p) {
+  const x = p[0]-TARGET[0], y = p[1]-TARGET[1], z = p[2]-TARGET[2];
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const x1 = x*cy - y*sy, y1 = x*sy + y*cy;           // giro alrededor de Z
+  return [x1, y1*cp - z*sp + 0, y1*sp + z*cp];        // [derecha, profundidad, arriba]
+}
+function rotN(n) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const x1 = n[0]*cy - n[1]*sy, y1 = n[0]*sy + n[1]*cy;
+  return [x1, y1*cp - n[2]*sp, y1*sp + n[2]*cp];
+}
+let W = 0, H = 0, DPR = 1, drawn = [];
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect(); W = r.width; H = r.height;
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR); render();
+}
+function project(v, f) {
+  const d = dist + v[1];
+  return [W/2 + v[0]*f/d, H*0.54 - v[2]*f/d, d];
+}
+function render() {
+  if (!W) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const f = Math.min(W, H) * 1.8;
+  // piso con cuadrícula de 10 mm
+  if (pitch > 0.03) {
+    ctx.lineWidth = 1;
+    for (let k = -150; k <= 150; k += 10) {
+      ctx.strokeStyle = k % 50 === 0 ? css("--edge") : css("--mat-line");
+      for (const seg of [[[k, -60, 0], [k, 260, 0]], [[-150, k + 100, 0], [150, k + 100, 0]]]) {
+        const a = project(toView(seg[0]), f), b = project(toView(seg[1]), f);
+        if (a[2] < 20 || b[2] < 20) continue;
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      }
+    }
+  }
+  const cam = [0, -dist, 0], list = [];
+  for (const p of polys) {
+    const vv = p.v.map(toView);
+    const c = vv.reduce((s, q) => [s[0]+q[0], s[1]+q[1], s[2]+q[2]], [0,0,0]).map(a => a / vv.length);
+    const nv = rotN(p.n);
+    if (nv[0]*(c[0]-cam[0]) + nv[1]*(c[1]-cam[1]) + nv[2]*(c[2]-cam[2]) >= 0) continue;  // cara trasera
+    const pts = vv.map(q => project(q, f));
+    if (pts.some(q => q[2] < 20)) continue;
+    list.push({ pts, depth: Math.hypot(c[0]-cam[0], c[1]-cam[1], c[2]-cam[2]), p });
+  }
+  list.sort((a, b) => b.depth - a.depth);
+  const hiP = hoverPart, hiG = hiGroup;
+  for (const it of list) {
+    const p = it.p, rgb = hexRGB(p.color);
+    let k = 0.5 + 0.5 * Math.max(0, p.n[0]*LIGHT[0] + p.n[1]*LIGHT[1] + p.n[2]*LIGHT[2]);
+    const part = SCENE[p.part];
+    const lit = (hiP === p.part) || (hiG && part.g === hiG);
+    const dim = hiG && part.g !== hiG;
+    let col = rgb.map(a => Math.min(255, Math.round(a * k + (lit ? 40 : 0))));
+    ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+    ctx.globalAlpha = dim ? 0.28 : 1;
+    ctx.beginPath(); ctx.moveTo(it.pts[0][0], it.pts[0][1]);
+    for (let i = 1; i < it.pts.length; i++) ctx.lineTo(it.pts[i][0], it.pts[i][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  drawn = list;
+}
+
+// ---------- interacción ----------
+function setView(name) {
+  document.querySelectorAll(".views button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === name)));
+  const [ty, tp, td] = VIEWS[name], y0 = yaw, p0 = pitch, d0 = dist;
+  let dy = ty - y0; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const t0 = performance.now(), T = reduce ? 1 : 520;
+  cancelAnimationFrame(anim);
+  const step = (t) => {
+    const u = Math.min(1, (t - t0) / T), e = u < .5 ? 2*u*u : 1 - Math.pow(-2*u + 2, 2)/2;
+    yaw = y0 + dy*e; pitch = p0 + (tp - p0)*e; dist = d0 + (td - d0)*e; render();
+    if (u < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+document.querySelectorAll(".views button").forEach(b => b.addEventListener("click", () => setView(b.dataset.v)));
+
+let drag = null; const pointers = new Map(); let pinch0 = 0;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  drag = { x: e.clientX, y: e.clientY }; if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a[0]-b[0], a[1]-b[1]); } });
+cv.addEventListener("pointermove", e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()], d = Math.hypot(a[0]-b[0], a[1]-b[1]);
+    if (pinch0) { dist = Math.min(1100, Math.max(260, dist * pinch0 / d)); pinch0 = d; render(); }
+    return;
+  }
+  if (drag) {
+    yaw -= (e.clientX - drag.x) * 0.008;
+    pitch = Math.max(-1.5, Math.min(1.55, pitch + (e.clientY - drag.y) * 0.008));
+    drag = { x: e.clientX, y: e.clientY };
+    document.querySelectorAll(".views button").forEach(b => b.setAttribute("aria-pressed", "false"));
+    render(); return;
+  }
+  pick(e);
+});
+const endPtr = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch0 = 0; if (!pointers.size) drag = null; };
+cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("pointerleave", () => { hoverPart = -1; tip.hidden = true; render(); });
+cv.addEventListener("wheel", e => { e.preventDefault(); dist = Math.min(1100, Math.max(260, dist * (1 + e.deltaY * 0.001))); render(); }, { passive: false });
+
+const tip = document.getElementById("tip");
+function inside(pt, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+function pick(e) {
+  const r = cv.getBoundingClientRect(), pt = [e.clientX - r.left, e.clientY - r.top];
+  let found = -1;
+  for (let i = drawn.length - 1; i >= 0; i--) if (inside(pt, drawn[i].pts)) { found = drawn[i].p.part; break; }
+  if (found !== hoverPart) { hoverPart = found; render(); }
+  if (found >= 0) {
+    const g = GROUPS.find(x => x.g === SCENE[found].g);
+    tip.textContent = g ? `${g.name} · ${g.dims}` : SCENE[found].n;
+    tip.hidden = false;
+    tip.style.left = Math.min(pt[0] + 14, r.width - tip.offsetWidth - 6) + "px";
+    tip.style.top = (pt[1] + 16) + "px";
+  } else tip.hidden = true;
+}
+
+// ---------- leyenda ----------
+const ul = document.getElementById("legend");
+GROUPS.forEach(g => {
+  const li = document.createElement("li"), b = document.createElement("button");
+  b.id = "lg-" + g.g; b.type = "button";
+  b.innerHTML = `<span class="sw" style="background:${g.color}"></span><span>${g.name}</span><span class="dim">${g.dims}</span>`;
+  const on = () => { hiGroup = g.g; b.classList.add("on"); render(); };
+  const off = () => { hiGroup = null; b.classList.remove("on"); render(); };
+  b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
+  b.addEventListener("focus", on); b.addEventListener("blur", off);
+  b.addEventListener("click", () => { hiGroup === g.g ? off() : on(); });
+  li.appendChild(b); ul.appendChild(li);
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+window.addEventListener("resize", resize);
+resize();
+window.__setView = (n) => { const v = VIEWS[n]; yaw = v[0]; pitch = v[1]; dist = v[2]; render(); };
+</script>

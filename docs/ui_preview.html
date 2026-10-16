@@ -1,0 +1,446 @@
+<title>Panel mirobot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{
+  --bg:#eef0ec; --card:#ffffff; --ink:#15191d; --mute:#69707a; --line:#e1e4de; --track:#d7dbd4;
+  --acc:#1d6e48; --acc-ink:#ffffff; --warn:#9a5b00; --warnbg:#fff3dc; --bad:#c22a2a; --badbg:#fde8e8;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1113; --card:#171a1d; --ink:#e8eae6; --mute:#9199a1; --line:#25292d; --track:#2e3338;
+  --acc:#3dbb82; --acc-ink:#05140c; --warn:#f1a43c; --warnbg:#2a200e; --bad:#ff6b6b; --badbg:#2d1515;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.app{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:12px;font:15px/1.45 var(--sans);color:var(--ink);
+  padding:max(14px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 28px max(16px,env(safe-area-inset-left,0px))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 2px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:19px;letter-spacing:-.01em}
+.logo{width:22px;height:22px;border-radius:6px;background:var(--ink);position:relative;flex:none}
+.logo::after{content:"";position:absolute;left:10px;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--bg)}
+.conn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mute)}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--mute)}
+.conn.on i{background:var(--acc)} .conn.off i{background:var(--bad)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+h2{margin:0 0 4px;font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+.sens{position:relative;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;height:44px;margin-top:8px}
+.sens span{border-radius:8px;background:var(--track);transition:background .12s}
+.sens span.on{background:var(--ink)}
+.marker{position:absolute;top:-6px;bottom:-6px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--acc);transition:left .15s}
+.marker.lost{background:var(--bad)}
+.readout{display:flex;justify-content:space-between;gap:8px;margin-top:12px;font-size:13px;color:var(--mute)}
+.readout b{font-family:var(--mono);font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.run{appearance:none;border:0;border-radius:14px;height:64px;width:100%;font:600 18px var(--sans);background:var(--acc);color:var(--acc-ink);cursor:pointer;transition:background .15s}
+.run.stop{background:var(--ink);color:var(--card)}
+.run:disabled{background:var(--track);color:var(--mute);cursor:not-allowed}
+.row{padding:12px 0 6px;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0;padding-top:6px}
+.lab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.lab small{color:var(--mute);font-size:12px}
+.val{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+.ctl{display:grid;grid-template-columns:38px minmax(0,1fr) 38px;gap:10px;align-items:center;margin-top:4px}
+.step{height:38px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:500 19px/1 var(--sans);cursor:pointer;touch-action:manipulation}
+input[type=range]{width:100%;height:30px;margin:0;accent-color:var(--acc)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;margin-top:8px;border-radius:11px;background:var(--bg)}
+.seg button{height:38px;border:0;border-radius:8px;background:transparent;color:var(--mute);font:500 14px var(--sans);cursor:pointer}
+.seg button.sel{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.alert{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;border:1px solid var(--bad);background:var(--badbg);color:var(--bad)}
+.alert b{display:block;font-size:15px}
+.alert span{display:block;font-size:13px;color:var(--ink);opacity:.8}
+.alert button{flex:none;border:0;border-radius:10px;padding:10px 12px;background:var(--bad);color:var(--card);font:600 14px var(--sans);cursor:pointer}
+.alert.warn{border-color:var(--warn);background:var(--warnbg);color:var(--warn)}
+.alert.warn button{background:var(--warn)}
+@media (prefers-reduced-motion:no-preference){.alert.bad{animation:pulse 1.2s ease-in-out infinite}}
+@keyframes pulse{50%{box-shadow:0 0 0 4px var(--badbg)}}
+.foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:0 2px;font-size:12.5px;color:var(--mute)}
+.foot .links{display:flex;gap:14px}
+.link{padding:0;border:0;background:none;color:var(--mute);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+a{color:inherit;text-underline-offset:2px}
+.ok{color:var(--acc)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* métricas */
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;margin:8px 0 0;font-size:13.5px}
+.kv dt{color:var(--mute)}
+.kv dd{margin:0;font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.chart{display:block;width:100%;height:130px;margin-top:8px}
+.legend{display:flex;gap:14px;margin-top:6px;font-size:12px;color:var(--mute)}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.bits{letter-spacing:.18em}
+:root[data-theme="dark"]{
+  --bg:#0f1113; --card:#171a1d; --ink:#e8eae6; --mute:#9199a1; --line:#25292d; --track:#2e3338;
+  --acc:#3dbb82; --acc-ink:#05140c; --warn:#f1a43c; --warnbg:#2a200e; --bad:#ff6b6b; --badbg:#2d1515;
+  color-scheme:dark;
+}
+/* --- solo para este render: marcos de teléfono y barra de simulación --- */
+:root{--desk:#e3e6e0;--frame:#c9cdc6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--desk:#08090a;--frame:#2a2e33}}
+:root[data-theme="dark"]{--desk:#08090a;--frame:#2a2e33}
+body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
+.pv{max-width:900px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.pv-head h1{margin:0;font-size:22px;letter-spacing:-.01em;text-wrap:balance}
+.pv-head p{margin:6px 0 0;color:var(--mute);font-size:14px;max-width:62ch}
+.pv-sim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0 20px}
+.pv-sim span{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-right:4px}
+.pv-sim button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 13px;font:500 13px var(--sans);cursor:pointer}
+.pv-sim button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.pv-grid{display:flex;flex-wrap:wrap;gap:28px;justify-content:center;align-items:flex-start}
+.pv-col{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(392px,100%)}
+.pv-url{font:12.5px var(--mono);color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 14px}
+.phone{width:100%;max-width:392px;height:800px;overflow-y:auto;background:var(--bg);border:10px solid var(--frame);border-radius:42px;scrollbar-width:thin}
+.phone .app{padding-top:22px}
+@media (max-width:440px){.phone{height:auto;border-width:6px;border-radius:28px}}
+</style>
+
+<div class="pv">
+  <header class="pv-head">
+    <h1>Panel web de mirobot</h1>
+    <p>Render de la interfaz que sirve el ESP32. Es el mismo HTML del firmware, conectado a un robot simulado: los sliders, el botón y las alertas funcionan.</p>
+  </header>
+  <div class="pv-sim" role="group" aria-label="Simulación">
+    <span>Simular</span>
+    <button type="button" id="sim-clp">Choque (CLP)</button>
+    <button type="button" id="sim-near">Obstáculo (NEAR)</button>
+    <button type="button" id="sim-lost">Línea perdida</button>
+  </div>
+<script>
+/* Robot simulado: responde a las mismas rutas que el ESP32 (/api/...). */
+(() => {
+  const S = { run: 1, alarm: "none", kp: 45, ki: 0, kd: 120, base: 140, max: 210, line: 0,
+    dirty: 0, lastChange: 0, lastSave: Date.now() - 95000, saves: 14, alarms: 0, lostEv: 2, runMs: 61000,
+    t0: Date.now(), lastE: 0, integ: 0, lostUntil: 0, lastRun: Date.now() };
+  const W = [-2, -1, 0, 1, 2], clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  let snap = null;
+
+  function step() {
+    const now = Date.now(), t = (now - S.t0) / 1000;
+    if (S.run) S.runMs += now - S.lastRun; S.lastRun = now;
+    let x = S.run ? 1.35 * Math.sin(t * 1.05) + 0.45 * Math.sin(t * 3.1) : 0.3;
+    if (now < S.lostUntil) x = 9;
+    const on = W.map(w => Math.abs(w - x) < 0.7);
+    const n = on.filter(Boolean).length;
+    let e = n === 0 ? (S.lastE >= 0 ? 3 : -3) : n === 5 ? 0 : W.reduce((a, w, i) => a + (on[i] ? w : 0), 0) / n;
+    let p = 0, i = 0, d = 0, u = 0, l = 0, r = 0;
+    if (S.run) {
+      S.integ = clamp(S.integ + e, -50, 50);
+      p = S.kp * e; i = S.ki * S.integ; d = S.kd * (e - S.lastE); u = p + i + d;
+      const mx = S.max, b = Math.min(S.base, mx);
+      l = Math.round(clamp(b + u, -mx, mx)); r = Math.round(clamp(b - u, -mx, mx));
+    }
+    S.lastE = e;
+    if (S.dirty && saveIn() === 0) { S.dirty = 0; S.saves++; S.lastSave = now; }
+    const bits = on.map(v => (v ? "1" : "0")).join("");
+    snap = { e, p, i, d, u, l, r, on: bits, raw: S.line ? bits.replace(/./g, c => (c === "1" ? "0" : "1")) : bits, count: n };
+  }
+  function saveIn() {
+    if (!S.dirty) return 0;
+    const now = Date.now();
+    return Math.max(0, 3000 - (now - S.lastChange), 10000 - (now - S.lastSave));
+  }
+  function state() {
+    return { name: "mirobot", ssid: "MiRobot", run: S.run, alarm: S.alarm, s: snap.on, e: snap.e, l: snap.l, r: snap.r,
+      kp: S.kp, ki: S.ki, kd: S.kd, base: S.base, max: S.max, line: S.line, dirty: S.dirty, saveIn: saveIn() };
+  }
+  function metrics() {
+    const now = Date.now();
+    return { fw: "web-1.0", up: now - S.t0 + 734000, run: S.run, alarm: S.alarm, raw: snap.raw, on: snap.on, count: snap.count,
+      err: snap.e, p: snap.p, i: snap.i, d: snap.d, u: snap.u, l: snap.l, r: snap.r, clp: S.alarm === "clp" ? 0 : 1,
+      near: S.alarm === "near" ? 0 : 1, loop_hz: 99.6 + Math.random() * 0.8, exec_us: 38 + Math.round(Math.random() * 14),
+      exec_max_us: 71 + Math.round(Math.random() * 20), lost_events: S.lostEv, alarms: S.alarms, run_ms: S.runMs,
+      kp: S.kp, ki: S.ki, kd: S.kd, base: S.base, max: S.max, line: S.line, heap: 241380 - Math.round(Math.random() * 900),
+      heap_min: 236912, clients: 1, ssid: "MiRobot", ip: "192.168.4.1", dns: "mirobot.com", saves: S.saves,
+      dirty: S.dirty, last_save_s: Math.round((now - S.lastSave) / 1000) };
+  }
+  function raise(a) { S.run = 0; S.alarm = a; S.alarms++; if (a === "lost") { S.lostEv++; S.lostUntil = Date.now() + 1500; } }
+  document.getElementById("sim-clp").onclick = () => raise("clp");
+  document.getElementById("sim-near").onclick = () => raise("near");
+  document.getElementById("sim-lost").onclick = () => raise("lost");
+
+  window.fetch = async (url) => {
+    const u = new URL(url, "http://mirobot.com"), q = u.searchParams;
+    await new Promise(r => setTimeout(r, 25));
+    step();
+    let body;
+    switch (u.pathname) {
+      case "/api/set": {
+        const k = q.get("k"), v = +q.get("v");
+        const lim = { kp: [0, 150], ki: [0, 5], kd: [0, 400], base: [0, 255], max: [0, 255], line: [0, 1] }[k];
+        if (lim) { S[k] = k === "base" || k === "max" || k === "line" ? Math.round(clamp(v, ...lim)) : clamp(v, ...lim); S.dirty = 1; S.lastChange = Date.now(); }
+        body = state(); break;
+      }
+      case "/api/run":
+        if (q.get("on") === "1") { if (S.alarm === "none" || S.alarm === "lost") { S.alarm = "none"; S.run = 1; S.integ = 0; } }
+        else S.run = 0;
+        body = state(); break;
+      case "/api/ack": if (!S.run) S.alarm = "none"; body = state(); break;
+      case "/api/reset": Object.assign(S, { kp: 45, ki: 0, kd: 120, base: 140, max: 210, line: 0, dirty: 0, lastSave: Date.now() }); S.saves++; body = state(); break;
+      case "/api/metrics": body = metrics(); break;
+      default: body = state();
+    }
+    return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  };
+  step();
+  // En el render, los enlaces entre páginas llevan al otro teléfono
+  document.addEventListener("click", ev => {
+    const a = ev.target.closest("a"); if (!a) return;
+    ev.preventDefault();
+    const to = a.getAttribute("href") === "/" ? "frame-p" : "frame-m";
+    document.getElementById(to).scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+})();
+</script>
+  <div class="pv-grid">
+    <div class="pv-col"><div class="pv-url">http://mirobot.com</div><div class="phone" id="frame-p"><main class="app" id="panel">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><span id="p-name">mirobot</span></div>
+    <div class="conn" id="p-conn"><i></i><span>Conectando…</span></div>
+  </header>
+
+  <div class="alert" id="p-alert" role="alert" hidden>
+    <div><b id="p-alert-t"></b><span id="p-alert-d"></span></div>
+    <button id="p-ack" type="button">Entendido</button>
+  </div>
+
+  <section class="card" aria-label="Sensores">
+    <h2>Sensores</h2>
+    <div class="sens" id="p-sens"><span></span><span></span><span></span><span></span><span></span><div class="marker" id="p-mark"></div></div>
+    <div class="readout"><span>Error <b id="p-err">0.0</b></span><span>Izq <b id="p-l">0</b></span><span>Der <b id="p-r">0</b></span></div>
+  </section>
+
+  <button class="run" id="p-run" type="button">Arrancar</button>
+
+  <section class="card"><h2>Velocidad</h2><div id="p-g-spd"></div></section>
+  <section class="card"><h2>Control PID</h2><div id="p-g-pid"></div></section>
+
+  <section class="card">
+    <h2>Pista</h2>
+    <div class="seg" id="p-line" role="group" aria-label="Color de la línea">
+      <button type="button" data-v="0">Línea negra</button>
+      <button type="button" data-v="1">Línea blanca</button>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span id="p-save">—</span>
+    <span class="links"><button class="link" id="p-reset" type="button">Restaurar valores</button><a href="/metrics" id="p-to-m">Métricas</a></span>
+  </footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const FIELDS = {
+    base: { g: "spd", n: "Base",   h: "en recta",           min: 0, max: 255, step: 1,    d: 0 },
+    max:  { g: "spd", n: "Máxima", h: "tope de cada motor", min: 0, max: 255, step: 1,    d: 0 },
+    kp:   { g: "pid", n: "Kp",     h: "proporcional",       min: 0, max: 150, step: 0.5,  d: 1 },
+    ki:   { g: "pid", n: "Ki",     h: "integral",           min: 0, max: 5,   step: 0.05, d: 2 },
+    kd:   { g: "pid", n: "Kd",     h: "derivativo",         min: 0, max: 400, step: 1,    d: 0 },
+  };
+  const ALERTS = {
+    clp:  ["Emergencia: choque", "Se activó el interruptor del frente. El robot se detuvo.", "bad"],
+    near: ["Emergencia: obstáculo", "Hay algo frente al robot. Se detuvo.", "bad"],
+    lost: ["Línea perdida", "No encontró la línea y se detuvo.", "warn"],
+  };
+  const busy = {}, lastSent = {}, trail = {};
+  let st = null, lastAlarm = "none";
+
+  for (const [k, f] of Object.entries(FIELDS)) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<div class="lab"><span>${f.n} <small>${f.h}</small></span><span class="val" id="p-v-${k}">–</span></div>` +
+      `<div class="ctl"><button class="step" type="button" aria-label="Bajar ${f.n}" data-k="${k}" data-s="-1">−</button>` +
+      `<input type="range" id="p-${k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.n}">` +
+      `<button class="step" type="button" aria-label="Subir ${f.n}" data-k="${k}" data-s="1">+</button></div>`;
+    $("p-g-" + f.g).appendChild(row);
+    const r = $("p-" + k);
+    const hold = () => { busy[k] = Date.now() + 1500; };
+    r.addEventListener("pointerdown", hold);
+    r.addEventListener("input", () => { hold(); show(k, +r.value); throttled(k, +r.value); });
+    r.addEventListener("change", () => { hold(); send(k, +r.value); });
+  }
+  document.querySelectorAll(".step").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.k, f = FIELDS[k], r = $("p-" + k);
+    const v = Math.min(f.max, Math.max(f.min, +r.value + f.step * +b.dataset.s));
+    r.value = v; busy[k] = Date.now() + 1500; show(k, v); throttled(k, v);
+  }));
+
+  function show(k, v) { $("p-v-" + k).textContent = (+v).toFixed(FIELDS[k].d); }
+  function throttled(k, v) {
+    clearTimeout(trail[k]);
+    const wait = 150 - (Date.now() - (lastSent[k] || 0));
+    if (wait <= 0) send(k, v); else trail[k] = setTimeout(() => send(k, v), wait);
+  }
+  function post(path) {
+    return fetch(path, { method: "POST" }).then(r => r.json()).then(apply).catch(() => offline());
+  }
+  function send(k, v) { lastSent[k] = Date.now(); return post(`/api/set?k=${k}&v=${v}`); }
+
+  $("p-run").addEventListener("click", () => post("/api/run?on=" + (st && st.run ? 0 : 1)));
+  $("p-ack").addEventListener("click", () => post("/api/ack"));
+  document.querySelectorAll("#p-line button").forEach(b => b.addEventListener("click", () => send("line", b.dataset.v)));
+  let armed = 0;
+  $("p-reset").addEventListener("click", e => {
+    if (Date.now() < armed) { armed = 0; e.target.textContent = "Restaurar valores"; post("/api/reset"); return; }
+    armed = Date.now() + 3000; e.target.textContent = "Toca otra vez para confirmar";
+    setTimeout(() => { if (armed && Date.now() >= armed) { armed = 0; e.target.textContent = "Restaurar valores"; } }, 3100);
+  });
+
+  function offline() {
+    const c = $("p-conn"); c.className = "conn off"; c.lastChild.textContent = "Sin conexión";
+  }
+  function apply(s) {
+    st = s;
+    const c = $("p-conn"); c.className = "conn on"; c.lastChild.textContent = s.ssid || "Conectado";
+    if (s.name) $("p-name").textContent = s.name;
+    // sensores: s.s es un texto "00100" de izquierda a derecha (1 = ve la línea)
+    [...$("p-sens").children].forEach((el, i) => { if (el.tagName === "SPAN") el.classList.toggle("on", s.s[i] === "1"); });
+    const m = $("p-mark"), lost = Math.abs(s.e) > 2;
+    m.style.left = (10 + (Math.max(-2, Math.min(2, s.e)) + 2) * 20) + "%";
+    m.classList.toggle("lost", lost);
+    $("p-err").textContent = (s.e >= 0 ? "+" : "") + s.e.toFixed(1);
+    $("p-l").textContent = s.l; $("p-r").textContent = s.r;
+    // alerta
+    const a = ALERTS[s.alarm], box = $("p-alert");
+    box.hidden = !a;
+    if (a) {
+      box.className = "alert " + a[2]; $("p-alert-t").textContent = a[0]; $("p-alert-d").textContent = a[1];
+      if (s.alarm !== lastAlarm && navigator.vibrate) navigator.vibrate(a[2] === "bad" ? [200, 100, 200] : 120);
+    }
+    lastAlarm = s.alarm;
+    // botón
+    const run = $("p-run"), blocked = a && a[2] === "bad";
+    run.disabled = !!blocked;
+    run.textContent = blocked ? "Atiende la alerta" : s.run ? "Detener" : "Arrancar";
+    run.classList.toggle("stop", !!s.run && !blocked);
+    // sliders (no se tocan mientras el usuario los mueve)
+    for (const k of Object.keys(FIELDS)) {
+      if ((busy[k] || 0) > Date.now()) continue;
+      $("p-" + k).value = s[k]; show(k, s[k]);
+    }
+    document.querySelectorAll("#p-line button").forEach(b => b.classList.toggle("sel", +b.dataset.v === s.line));
+    // guardado
+    const sv = $("p-save");
+    if (s.dirty) { sv.className = ""; sv.textContent = `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
+    else { sv.className = "ok"; sv.textContent = "✓ Valores guardados"; }
+  }
+  function poll() {
+    fetch("/api/state", { cache: "no-store" }).then(r => r.json()).then(apply).catch(offline)
+      .finally(() => setTimeout(poll, 300));
+  }
+  poll();
+})();
+</script>
+</div></div>
+    <div class="pv-col"><div class="pv-url">http://mirobot.com/metrics</div><div class="phone" id="frame-m"><main class="app" id="metrics">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Métricas</div>
+    <a href="/" id="m-to-p" class="conn">← Panel</a>
+  </header>
+
+  <section class="card">
+    <h2>Error y acción de control</h2>
+    <canvas class="chart" id="m-chart" aria-label="Gráfico del error y de la acción de control en los últimos 30 segundos"></canvas>
+    <div class="legend"><span><i id="m-lg-e"></i>error (−3 a +3)</span><span><i id="m-lg-u"></i>u (escalada)</span><span id="m-win">últimos 30 s</span></div>
+  </section>
+
+  <section class="card"><h2>Control</h2><dl class="kv" id="m-ctl"></dl></section>
+  <section class="card"><h2>Sensores</h2><dl class="kv" id="m-sen"></dl></section>
+  <section class="card"><h2>Eventos</h2><dl class="kv" id="m-evt"></dl></section>
+  <section class="card"><h2>Sistema</h2><dl class="kv" id="m-sys"></dl></section>
+
+  <footer class="foot"><span>JSON crudo en <a href="/api/metrics">/api/metrics</a></span><span id="m-age">—</span></footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const N = 150, hist = [];            // 150 muestras x 200 ms = 30 s
+  const f = (v, d = 0) => (v == null ? "–" : (+v).toFixed(d));
+  const sgn = (v, d = 2) => (v >= 0 ? "+" : "") + (+v).toFixed(d);
+  const dur = ms => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + " h " : "") + (h || m ? m + " min " : "") + (s % 60) + " s"; };
+  const ALARM = { none: "ninguna", clp: "choque (CLP)", near: "obstáculo (NEAR)", lost: "línea perdida" };
+
+  function kv(id, rows) {
+    $(id).innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function draw() {
+    const c = $("m-chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (!w) return;
+    c.width = w * dpr; c.height = h * dpr;
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    const y = v => h / 2 - (v / 3) * (h / 2 - 6);
+    g.strokeStyle = css("--line"); g.lineWidth = 1;
+    for (const v of [-2, 0, 2]) { g.beginPath(); g.moveTo(0, y(v)); g.lineTo(w, y(v)); g.stroke(); }
+    g.fillStyle = css("--mute"); g.font = "11px " + css("--mono");
+    g.fillText("+2", 2, y(2) - 3); g.fillText("0", 2, y(0) - 3); g.fillText("−2", 2, y(-2) - 3);
+    const line = (key, color, scale) => {
+      g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+      hist.forEach((p, i) => { const X = w - (hist.length - 1 - i) * (w / (N - 1)), Y = y(Math.max(-3, Math.min(3, p[key] * scale)));
+        i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+      g.stroke();
+    };
+    line("u", css("--mute"), 1 / 100);
+    line("e", css("--acc"), 1);
+    if (hist.length) { const p = hist[hist.length - 1]; g.fillStyle = css("--acc");
+      g.beginPath(); g.arc(w - 3, y(Math.max(-3, Math.min(3, p.e))), 3.5, 0, 7); g.fill(); }
+  }
+  $("m-lg-e").style.background = "var(--acc)";
+  $("m-lg-u").style.background = "var(--mute)";
+
+  let last = 0;
+  function apply(m) {
+    last = Date.now();
+    hist.push({ e: m.err, u: m.u }); if (hist.length > N) hist.shift();
+    draw();
+    kv("m-ctl", [
+      ["Estado", m.run ? "corriendo" : "detenido"],
+      ["Error e", sgn(m.err)],
+      ["P = Kp·e", sgn(m.p, 1)], ["I = Ki·Σe", sgn(m.i, 1)], ["D = Kd·Δe", sgn(m.d, 1)],
+      ["Acción u", sgn(m.u, 1)],
+      ["PWM izq / der", `${m.l} / ${m.r}`],
+      ["Kp · Ki · Kd", `${f(m.kp, 1)} · ${f(m.ki, 2)} · ${f(m.kd, 0)}`],
+      ["Base / máx", `${m.base} / ${m.max}`],
+      ["Frecuencia del lazo", f(m.loop_hz, 1) + " Hz"],
+      ["Tiempo de cálculo", `${m.exec_us} µs (máx ${m.exec_max_us})`],
+    ]);
+    kv("m-sen", [
+      ["Lectura cruda S1…S5", `<span class="bits">${m.raw}</span>`],
+      ["Ve la línea (izq→der)", `<span class="bits">${m.on}</span>`],
+      ["Sensores activos", m.count],
+      ["Color de línea", m.line ? "blanca" : "negra"],
+      ["CLP / NEAR (crudo)", `${m.clp} / ${m.near}`],
+    ]);
+    kv("m-evt", [
+      ["Alarma actual", ALARM[m.alarm] || m.alarm],
+      ["Alarmas totales", m.alarms],
+      ["Veces que perdió la línea", m.lost_events],
+      ["Tiempo corriendo", dur(m.run_ms)],
+    ]);
+    kv("m-sys", [
+      ["Encendido hace", dur(m.up)],
+      ["Red", `${m.ssid} · ${m.clients} cliente${m.clients === 1 ? "" : "s"}`],
+      ["Dirección", `${m.ip} · ${m.dns}`],
+      ["Memoria libre", `${f(m.heap / 1024, 1)} KB (mín ${f(m.heap_min / 1024, 1)})`],
+      ["Guardados en flash", `${m.saves}${m.dirty ? " · pendiente" : ""}`],
+      ["Último guardado", m.last_save_s < 0 ? "nunca en esta sesión" : `hace ${dur(m.last_save_s * 1000)}`],
+      ["Firmware", m.fw],
+    ]);
+  }
+  setInterval(() => { $("m-age").textContent = last && Date.now() - last < 1500 ? "en vivo" : "sin conexión"; }, 500);
+  window.addEventListener("resize", draw);
+  function poll() {
+    fetch("/api/metrics", { cache: "no-store" }).then(r => r.json()).then(apply).catch(() => {})
+      .finally(() => setTimeout(poll, 200));
+  }
+  poll();
+})();
+</script>
+</div></div>
+  </div>
+</div>
+
+

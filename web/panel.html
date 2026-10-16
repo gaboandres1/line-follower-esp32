@@ -1,0 +1,140 @@
+<main class="app" id="panel">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><span id="p-name">mirobot</span></div>
+    <div class="conn" id="p-conn"><i></i><span>Conectando…</span></div>
+  </header>
+
+  <div class="alert" id="p-alert" role="alert" hidden>
+    <div><b id="p-alert-t"></b><span id="p-alert-d"></span></div>
+    <button id="p-ack" type="button">Entendido</button>
+  </div>
+
+  <section class="card" aria-label="Sensores">
+    <h2>Sensores</h2>
+    <div class="sens" id="p-sens"><span></span><span></span><span></span><span></span><span></span><div class="marker" id="p-mark"></div></div>
+    <div class="readout"><span>Error <b id="p-err">0.0</b></span><span>Izq <b id="p-l">0</b></span><span>Der <b id="p-r">0</b></span></div>
+  </section>
+
+  <button class="run" id="p-run" type="button">Arrancar</button>
+
+  <section class="card"><h2>Velocidad</h2><div id="p-g-spd"></div></section>
+  <section class="card"><h2>Control PID</h2><div id="p-g-pid"></div></section>
+
+  <section class="card">
+    <h2>Pista</h2>
+    <div class="seg" id="p-line" role="group" aria-label="Color de la línea">
+      <button type="button" data-v="0">Línea negra</button>
+      <button type="button" data-v="1">Línea blanca</button>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span id="p-save">—</span>
+    <span class="links"><button class="link" id="p-reset" type="button">Restaurar valores</button><a href="/metrics" id="p-to-m">Métricas</a></span>
+  </footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const FIELDS = {
+    base: { g: "spd", n: "Base",   h: "en recta",           min: 0, max: 255, step: 1,    d: 0 },
+    max:  { g: "spd", n: "Máxima", h: "tope de cada motor", min: 0, max: 255, step: 1,    d: 0 },
+    kp:   { g: "pid", n: "Kp",     h: "proporcional",       min: 0, max: 150, step: 0.5,  d: 1 },
+    ki:   { g: "pid", n: "Ki",     h: "integral",           min: 0, max: 5,   step: 0.05, d: 2 },
+    kd:   { g: "pid", n: "Kd",     h: "derivativo",         min: 0, max: 400, step: 1,    d: 0 },
+  };
+  const ALERTS = {
+    clp:  ["Emergencia: choque", "Se activó el interruptor del frente. El robot se detuvo.", "bad"],
+    near: ["Emergencia: obstáculo", "Hay algo frente al robot. Se detuvo.", "bad"],
+    lost: ["Línea perdida", "No encontró la línea y se detuvo.", "warn"],
+  };
+  const busy = {}, lastSent = {}, trail = {};
+  let st = null, lastAlarm = "none";
+
+  for (const [k, f] of Object.entries(FIELDS)) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<div class="lab"><span>${f.n} <small>${f.h}</small></span><span class="val" id="p-v-${k}">–</span></div>` +
+      `<div class="ctl"><button class="step" type="button" aria-label="Bajar ${f.n}" data-k="${k}" data-s="-1">−</button>` +
+      `<input type="range" id="p-${k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.n}">` +
+      `<button class="step" type="button" aria-label="Subir ${f.n}" data-k="${k}" data-s="1">+</button></div>`;
+    $("p-g-" + f.g).appendChild(row);
+    const r = $("p-" + k);
+    const hold = () => { busy[k] = Date.now() + 1500; };
+    r.addEventListener("pointerdown", hold);
+    r.addEventListener("input", () => { hold(); show(k, +r.value); throttled(k, +r.value); });
+    r.addEventListener("change", () => { hold(); send(k, +r.value); });
+  }
+  document.querySelectorAll(".step").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.k, f = FIELDS[k], r = $("p-" + k);
+    const v = Math.min(f.max, Math.max(f.min, +r.value + f.step * +b.dataset.s));
+    r.value = v; busy[k] = Date.now() + 1500; show(k, v); throttled(k, v);
+  }));
+
+  function show(k, v) { $("p-v-" + k).textContent = (+v).toFixed(FIELDS[k].d); }
+  function throttled(k, v) {
+    clearTimeout(trail[k]);
+    const wait = 150 - (Date.now() - (lastSent[k] || 0));
+    if (wait <= 0) send(k, v); else trail[k] = setTimeout(() => send(k, v), wait);
+  }
+  function post(path) {
+    return fetch(path, { method: "POST" }).then(r => r.json()).then(apply).catch(() => offline());
+  }
+  function send(k, v) { lastSent[k] = Date.now(); return post(`/api/set?k=${k}&v=${v}`); }
+
+  $("p-run").addEventListener("click", () => post("/api/run?on=" + (st && st.run ? 0 : 1)));
+  $("p-ack").addEventListener("click", () => post("/api/ack"));
+  document.querySelectorAll("#p-line button").forEach(b => b.addEventListener("click", () => send("line", b.dataset.v)));
+  let armed = 0;
+  $("p-reset").addEventListener("click", e => {
+    if (Date.now() < armed) { armed = 0; e.target.textContent = "Restaurar valores"; post("/api/reset"); return; }
+    armed = Date.now() + 3000; e.target.textContent = "Toca otra vez para confirmar";
+    setTimeout(() => { if (armed && Date.now() >= armed) { armed = 0; e.target.textContent = "Restaurar valores"; } }, 3100);
+  });
+
+  function offline() {
+    const c = $("p-conn"); c.className = "conn off"; c.lastChild.textContent = "Sin conexión";
+  }
+  function apply(s) {
+    st = s;
+    const c = $("p-conn"); c.className = "conn on"; c.lastChild.textContent = s.ssid || "Conectado";
+    if (s.name) $("p-name").textContent = s.name;
+    // sensores: s.s es un texto "00100" de izquierda a derecha (1 = ve la línea)
+    [...$("p-sens").children].forEach((el, i) => { if (el.tagName === "SPAN") el.classList.toggle("on", s.s[i] === "1"); });
+    const m = $("p-mark"), lost = Math.abs(s.e) > 2;
+    m.style.left = (10 + (Math.max(-2, Math.min(2, s.e)) + 2) * 20) + "%";
+    m.classList.toggle("lost", lost);
+    $("p-err").textContent = (s.e >= 0 ? "+" : "") + s.e.toFixed(1);
+    $("p-l").textContent = s.l; $("p-r").textContent = s.r;
+    // alerta
+    const a = ALERTS[s.alarm], box = $("p-alert");
+    box.hidden = !a;
+    if (a) {
+      box.className = "alert " + a[2]; $("p-alert-t").textContent = a[0]; $("p-alert-d").textContent = a[1];
+      if (s.alarm !== lastAlarm && navigator.vibrate) navigator.vibrate(a[2] === "bad" ? [200, 100, 200] : 120);
+    }
+    lastAlarm = s.alarm;
+    // botón
+    const run = $("p-run"), blocked = a && a[2] === "bad";
+    run.disabled = !!blocked;
+    run.textContent = blocked ? "Atiende la alerta" : s.run ? "Detener" : "Arrancar";
+    run.classList.toggle("stop", !!s.run && !blocked);
+    // sliders (no se tocan mientras el usuario los mueve)
+    for (const k of Object.keys(FIELDS)) {
+      if ((busy[k] || 0) > Date.now()) continue;
+      $("p-" + k).value = s[k]; show(k, s[k]);
+    }
+    document.querySelectorAll("#p-line button").forEach(b => b.classList.toggle("sel", +b.dataset.v === s.line));
+    // guardado
+    const sv = $("p-save");
+    if (s.dirty) { sv.className = ""; sv.textContent = `Guardando en ${Math.max(1, Math.ceil(s.saveIn / 1000))} s…`; }
+    else { sv.className = "ok"; sv.textContent = "✓ Valores guardados"; }
+  }
+  function poll() {
+    fetch("/api/state", { cache: "no-store" }).then(r => r.json()).then(apply).catch(offline)
+      .finally(() => setTimeout(poll, 300));
+  }
+  poll();
+})();
+</script>

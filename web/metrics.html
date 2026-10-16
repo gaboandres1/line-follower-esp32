@@ -1,0 +1,106 @@
+<main class="app" id="metrics">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Métricas</div>
+    <a href="/" id="m-to-p" class="conn">← Panel</a>
+  </header>
+
+  <section class="card">
+    <h2>Error y acción de control</h2>
+    <canvas class="chart" id="m-chart" aria-label="Gráfico del error y de la acción de control en los últimos 30 segundos"></canvas>
+    <div class="legend"><span><i id="m-lg-e"></i>error (−3 a +3)</span><span><i id="m-lg-u"></i>u (escalada)</span><span id="m-win">últimos 30 s</span></div>
+  </section>
+
+  <section class="card"><h2>Control</h2><dl class="kv" id="m-ctl"></dl></section>
+  <section class="card"><h2>Sensores</h2><dl class="kv" id="m-sen"></dl></section>
+  <section class="card"><h2>Eventos</h2><dl class="kv" id="m-evt"></dl></section>
+  <section class="card"><h2>Sistema</h2><dl class="kv" id="m-sys"></dl></section>
+
+  <footer class="foot"><span>JSON crudo en <a href="/api/metrics">/api/metrics</a></span><span id="m-age">—</span></footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const N = 150, hist = [];            // 150 muestras x 200 ms = 30 s
+  const f = (v, d = 0) => (v == null ? "–" : (+v).toFixed(d));
+  const sgn = (v, d = 2) => (v >= 0 ? "+" : "") + (+v).toFixed(d);
+  const dur = ms => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + " h " : "") + (h || m ? m + " min " : "") + (s % 60) + " s"; };
+  const ALARM = { none: "ninguna", clp: "choque (CLP)", near: "obstáculo (NEAR)", lost: "línea perdida" };
+
+  function kv(id, rows) {
+    $(id).innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function draw() {
+    const c = $("m-chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (!w) return;
+    c.width = w * dpr; c.height = h * dpr;
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    const y = v => h / 2 - (v / 3) * (h / 2 - 6);
+    g.strokeStyle = css("--line"); g.lineWidth = 1;
+    for (const v of [-2, 0, 2]) { g.beginPath(); g.moveTo(0, y(v)); g.lineTo(w, y(v)); g.stroke(); }
+    g.fillStyle = css("--mute"); g.font = "11px " + css("--mono");
+    g.fillText("+2", 2, y(2) - 3); g.fillText("0", 2, y(0) - 3); g.fillText("−2", 2, y(-2) - 3);
+    const line = (key, color, scale) => {
+      g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+      hist.forEach((p, i) => { const X = w - (hist.length - 1 - i) * (w / (N - 1)), Y = y(Math.max(-3, Math.min(3, p[key] * scale)));
+        i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+      g.stroke();
+    };
+    line("u", css("--mute"), 1 / 100);
+    line("e", css("--acc"), 1);
+    if (hist.length) { const p = hist[hist.length - 1]; g.fillStyle = css("--acc");
+      g.beginPath(); g.arc(w - 3, y(Math.max(-3, Math.min(3, p.e))), 3.5, 0, 7); g.fill(); }
+  }
+  $("m-lg-e").style.background = "var(--acc)";
+  $("m-lg-u").style.background = "var(--mute)";
+
+  let last = 0;
+  function apply(m) {
+    last = Date.now();
+    hist.push({ e: m.err, u: m.u }); if (hist.length > N) hist.shift();
+    draw();
+    kv("m-ctl", [
+      ["Estado", m.run ? "corriendo" : "detenido"],
+      ["Error e", sgn(m.err)],
+      ["P = Kp·e", sgn(m.p, 1)], ["I = Ki·Σe", sgn(m.i, 1)], ["D = Kd·Δe", sgn(m.d, 1)],
+      ["Acción u", sgn(m.u, 1)],
+      ["PWM izq / der", `${m.l} / ${m.r}`],
+      ["Kp · Ki · Kd", `${f(m.kp, 1)} · ${f(m.ki, 2)} · ${f(m.kd, 0)}`],
+      ["Base / máx", `${m.base} / ${m.max}`],
+      ["Frecuencia del lazo", f(m.loop_hz, 1) + " Hz"],
+      ["Tiempo de cálculo", `${m.exec_us} µs (máx ${m.exec_max_us})`],
+    ]);
+    kv("m-sen", [
+      ["Lectura cruda S1…S5", `<span class="bits">${m.raw}</span>`],
+      ["Ve la línea (izq→der)", `<span class="bits">${m.on}</span>`],
+      ["Sensores activos", m.count],
+      ["Color de línea", m.line ? "blanca" : "negra"],
+      ["CLP / NEAR (crudo)", `${m.clp} / ${m.near}`],
+    ]);
+    kv("m-evt", [
+      ["Alarma actual", ALARM[m.alarm] || m.alarm],
+      ["Alarmas totales", m.alarms],
+      ["Veces que perdió la línea", m.lost_events],
+      ["Tiempo corriendo", dur(m.run_ms)],
+    ]);
+    kv("m-sys", [
+      ["Encendido hace", dur(m.up)],
+      ["Red", `${m.ssid} · ${m.clients} cliente${m.clients === 1 ? "" : "s"}`],
+      ["Dirección", `${m.ip} · ${m.dns}`],
+      ["Memoria libre", `${f(m.heap / 1024, 1)} KB (mín ${f(m.heap_min / 1024, 1)})`],
+      ["Guardados en flash", `${m.saves}${m.dirty ? " · pendiente" : ""}`],
+      ["Último guardado", m.last_save_s < 0 ? "nunca en esta sesión" : `hace ${dur(m.last_save_s * 1000)}`],
+      ["Firmware", m.fw],
+    ]);
+  }
+  setInterval(() => { $("m-age").textContent = last && Date.now() - last < 1500 ? "en vivo" : "sin conexión"; }, 500);
+  window.addEventListener("resize", draw);
+  function poll() {
+    fetch("/api/metrics", { cache: "no-store" }).then(r => r.json()).then(apply).catch(() => {})
+      .finally(() => setTimeout(poll, 200));
+  }
+  poll();
+})();
+</script>
