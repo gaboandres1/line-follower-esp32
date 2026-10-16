@@ -87,8 +87,8 @@
     ]);
     kv("m-sys", [
       ["Encendido hace", dur(m.up)],
-      ["Red", `${m.ssid} · ${m.clients} cliente${m.clients === 1 ? "" : "s"}`],
-      ["Dirección", `${m.ip} · ${m.dns}`],
+      ["Red", m.rssi !== undefined ? `${m.ssid} · ${m.rssi} dBm` : `${m.ssid} · ${m.clients} cliente${m.clients === 1 ? "" : "s"}`],
+      ["Dirección", `${m.ip} · ${m.dns || m.ipmode}`],
       ["Memoria libre", `${f(m.heap / 1024, 1)} KB (mín ${f(m.heap_min / 1024, 1)})`],
       ["Guardados en flash", `${m.saves}${m.dirty ? " · pendiente" : ""}`],
       ["Último guardado", m.last_save_s < 0 ? "nunca en esta sesión" : `hace ${dur(m.last_save_s * 1000)}`],

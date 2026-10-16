@@ -1,13 +1,16 @@
-# Panel web — `firmware/seguidor_web`
+# Panel web — `firmware/seguidor_web` y `firmware/seguidor_wifi`
 
 ![Panel y métricas](img/panel_y_metricas.png)
 
 Es el mismo seguidor PID de `firmware/seguidor_pid`, pero ahora el ESP32 crea su propia red WiFi y sirve un panel web para controlarlo desde el celular.
 
+> Si prefieres que el robot se conecte a una red WiFi existente (DHCP o IP fija, sin DNS), usa `firmware/seguidor_wifi`: todo lo de las secciones 3 a 7 aplica igual, y la red se explica en la [sección 9](#9-modo-cliente-wifi-firmwareseguidor_wifi).
+
 ```
 firmware/seguidor_web/
 ├── seguidor_web.ino   ← el programa (configuración arriba)
 └── web_ui.h           ← la interfaz web ya empaquetada (se abre como pestaña)
+firmware/seguidor_wifi/  ← misma estructura, versión cliente WiFi (sección 9)
 web/                   ← fuentes editables de la interfaz + build.py
 docs/ui_preview.html   ← render de la interfaz con un robot simulado
 ```
@@ -151,7 +154,7 @@ Edita los archivos de `web/` (`common.css`, `panel.html`, `metrics.html`) y ejec
 python3 web/build.py
 ```
 
-Esto regenera `firmware/seguidor_web/web_ui.h` y el render `docs/ui_preview.html`. No edites `web_ui.h` a mano.
+Esto regenera `web_ui.h` en `firmware/seguidor_web` y `firmware/seguidor_wifi`, y el render `docs/ui_preview.html`. No edites `web_ui.h` a mano.
 
 ---
 
@@ -166,3 +169,65 @@ Esto regenera `firmware/seguidor_web/web_ui.h` y el render `docs/ui_preview.html
 | Se activa "obstáculo" sin nada al frente | ajusta el potenciómetro del NEAR o pon `USE_NEAR = false` |
 | El ESP32 se reinicia al arrancar los motores | el WiFi consume más energía: revisa la batería, la tierra común y agrega un condensador de 470 µF entre 5V y GND |
 | Error de compilación por `ledcAttach` | el código ya soporta el core 2.x y 3.x; actualiza el soporte ESP32 si persiste |
+
+---
+
+## 9. Modo cliente WiFi (`firmware/seguidor_wifi`)
+
+Es el mismo programa (control PID, panel, métricas, memoria y API idénticos), pero en vez de crear su propia red **el ESP32 se conecta a una red WiFi existente**, por ejemplo la de tu casa o un router del laboratorio. No hay DNS: el panel se abre por la IP del robot.
+
+### Configuración (sección **0) RED**)
+
+| Constante | Valor | Qué hace |
+|---|---|---|
+| `WIFI_SSID` / `WIFI_PASS` | `MiRedWiFi` / `miclave123` | red a la que se conecta. Debe ser de **2.4 GHz** (el ESP32 no ve redes de 5 GHz). |
+| `USE_STATIC_IP` | `false` | `false` = **DHCP**: el router asigna la IP. `true` = **IP fija**. |
+| `STATIC_IP` | `192.168.1.50` | IP del robot (solo con IP fija). Que no la use otro equipo. |
+| `STATIC_GW` | `192.168.1.1` | puerta de enlace: la IP del router |
+| `STATIC_MASK` | `255.255.255.0` | máscara de la red |
+| `WIFI_CONNECT_WAIT_MS` | `15000` | cuánto espera al encender antes de seguir sin red |
+| `STOP_ON_WIFI_LOSS` | `true` | si se cae el WiFi con el robot corriendo, lo detiene |
+| `ROBOT_NAME` | `mirobot` | nombre del panel y del equipo en la lista de clientes del router |
+
+### Uso
+
+1. Pon tu red en `WIFI_SSID` / `WIFI_PASS` y sube el sketch.
+2. Abre el Monitor Serie (115200). Al conectarse imprime:
+   ```
+   Conectando a "MiRedWiFi"........
+   Conectado a "MiRedWiFi" (-58 dBm). IP por DHCP: 192.168.1.37  ->  abre http://192.168.1.37
+   ```
+3. Desde cualquier equipo **conectado a la misma red**, abre `http://192.168.1.37`.
+
+- **Enter en el Monitor Serie** vuelve a imprimir la IP en cualquier momento.
+- Si se cae la red, el ESP32 **reconecta solo** y vuelve a imprimir la IP al recuperarla.
+- Sin WiFi el robot sigue funcionando con el botón **BOOT**.
+
+### DHCP o IP fija
+
+Con **DHCP** la IP puede cambiar cuando el robot se reconecta o el router se reinicia. Para tener siempre la misma:
+
+- **IP fija en el robot:** `USE_STATIC_IP = true` y completa `STATIC_IP`, `STATIC_GW` y `STATIC_MASK` con los datos de tu red. Elige una IP **fuera del rango DHCP del router** para que no se la asigne a otro equipo.
+- **Reserva DHCP en el router:** deja `USE_STATIC_IP = false` y reserva una IP para la MAC del robot. El router lo muestra como `mirobot`.
+
+### Diferencias con `seguidor_web`
+
+| | `seguidor_web` | `seguidor_wifi` |
+|---|---|---|
+| Red | la crea el robot | la del router |
+| Dirección | `http://mirobot.com` o `192.168.4.1` | `http://<IP>` que imprime el Monitor Serie |
+| DNS | sí | no |
+| Clientes | 1 | cualquiera en la misma red |
+| Métricas → Red | clientes conectados | intensidad de señal (dBm) y modo de IP (DHCP / fija) |
+
+> **Ojo:** cualquiera conectado a esa red puede abrir el panel y mover el robot. Úsalo en una red de confianza.
+
+### Problemas comunes
+
+| Síntoma | Qué hacer |
+|---|---|
+| Se queda en `Conectando...` | revisa SSID y clave (distinguen mayúsculas), que la red sea de 2.4 GHz y que el robot esté en alcance |
+| Con IP fija no conecta o no abre el panel | la IP, la puerta de enlace y la máscara deben ser de la red del router; prueba primero con DHCP para ver qué datos asigna |
+| La IP cambió | es normal con DHCP: usa IP fija o una reserva en el router |
+| El panel no abre desde otro equipo | debe estar en la **misma red**; algunas redes de invitados o universitarias aíslan a los clientes entre sí |
+

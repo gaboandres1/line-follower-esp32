@@ -11,6 +11,7 @@ Robot seguidor de línea con **ESP32**, sensor **BFD-1000** de 5 canales, puente
 | [`firmware/testbench`](firmware/testbench) | **Calibración.** Asistente por el Monitor Serie que descubre qué motor es cuál, su sentido de giro y cómo leen los sensores. Imprime las constantes listas para copiar. |
 | [`firmware/seguidor_pid`](firmware/seguidor_pid) | **Seguidor PID base.** Sin WiFi. Arranca y se detiene con el botón BOOT. |
 | [`firmware/seguidor_web`](firmware/seguidor_web) | **Seguidor PID con panel web.** Red WiFi propia, `http://mirobot.com`, sliders del PID con memoria, alertas de choque y obstáculo, y página de métricas. |
+| [`firmware/seguidor_wifi`](firmware/seguidor_wifi) | **Seguidor PID con panel web, cliente WiFi.** Se conecta a tu red (DHCP o IP fija) y el panel se abre en `http://<IP del robot>`. Sin DNS. |
 | [`web`](web) | fuentes de la interfaz web y el script que la empaqueta en el firmware |
 | [`hardware`](hardware) | chasis para corte láser, planos, modelo 3D y lista de componentes |
 | [`docs`](docs) | guías detalladas y un [render de la interfaz](docs/ui_preview.html) con robot simulado |
@@ -20,8 +21,11 @@ seguidor-linea-esp32/
 ├── firmware/
 │   ├── testbench/testbench.ino
 │   ├── seguidor_pid/seguidor_pid.ino
-│   └── seguidor_web/
-│       ├── seguidor_web.ino
+│   ├── seguidor_web/
+│   │   ├── seguidor_web.ino
+│   │   └── web_ui.h            ← generado por web/build.py
+│   └── seguidor_wifi/
+│       ├── seguidor_wifi.ino
 │       └── web_ui.h            ← generado por web/build.py
 ├── web/                        ← common.css, panel.html, metrics.html, build.py
 ├── hardware/
@@ -104,17 +108,20 @@ flowchart LR
 
 ### 3. Subir un seguidor
 
-Pega las constantes en la sección **HARDWARE** de uno de los dos sketches:
+Pega las constantes en la sección **HARDWARE** de uno de los tres sketches:
 
-| | `seguidor_pid` | `seguidor_web` |
+| | `seguidor_pid` | `seguidor_web` / `seguidor_wifi` |
 |---|---|---|
 | Arrancar / detener | botón BOOT | panel web o botón BOOT |
 | Ajustar el PID | editar el código y volver a subir | sliders en el celular, en vivo |
 | Memoria de los valores | no (están en el código) | sí, en la flash, con protección anti-sobreescritura |
 | Alertas CLP / NEAR | opcionales, solo detienen | detienen, avisan en el celular y bloquean el arranque |
 | Métricas | Monitor Serie | página `/metrics` y JSON en `/api/metrics` |
+| Red | — | `seguidor_web`: red propia del robot con DNS · `seguidor_wifi`: se une a tu red (DHCP o IP fija), sin DNS |
 
 Con `seguidor_web`, conéctate a la red **MiRobot** (clave `robot1234`) y abre **`http://mirobot.com`** o `http://192.168.4.1`.
+
+¿Prefieres que el robot se conecte a tu propia red WiFi? Usa **`seguidor_wifi`**: es igual a `seguidor_web`, pero en modo cliente. Pon el nombre y la clave de tu red, elige DHCP o IP fija, y abre `http://<IP>` (la IP se imprime en el Monitor Serie). Ver [docs/panel_web.md](docs/panel_web.md#9-modo-cliente-wifi-firmwareseguidor_wifi).
 
 ## Configuración
 
@@ -123,7 +130,7 @@ Cada sketch separa sus constantes en dos grupos:
 - **Hardware** (cómo está armado *tu* robot, lo calcula el testbench): `BLACK_VALUE`, `S1_IS_LEFT`, `LEFT_CHANNEL`, `LEFT_INVERT`, `RIGHT_INVERT`, `CLP_ACTIVE_VALUE`, `NEAR_ACTIVE_VALUE`.
 - **Lógica** (cómo se comporta): `LINE_COLOR` (línea negra o blanca), `BASE_SPEED`, `MAX_SPEED` (saturación), `KP`, `KI`, `KD`, tiempos y opciones de seguridad.
 
-`seguidor_web` agrega la configuración de **red** (SSID, clave, IP, máscara /25, nombre DNS) y de **memoria** (tiempos de guardado).
+`seguidor_web` agrega la configuración de **red** (SSID, clave, IP, máscara /25, nombre DNS) y de **memoria** (tiempos de guardado). `seguidor_wifi` tiene la misma memoria, y en **red** pide la red a la que se conecta y si usa DHCP o IP fija (IP, puerta de enlace y máscara).
 
 ### Cómo funciona el PID
 
@@ -142,6 +149,7 @@ Valores de partida: `Kp = 45`, `Ki = 0`, `Kd = 120`, `BASE = 140`, `MAX = 210`. 
 
 - Red WiFi propia con DHCP en una red /25 y un solo cliente a la vez.
 - DNS propio: `mirobot.com` apunta al robot.
+- Variante **`seguidor_wifi`**: el robot se une a tu red WiFi (DHCP o IP fija) y el panel se abre por su IP, sin DNS.
 - Botón de arrancar/detener, sliders de velocidad y PID con botones − / + para ajustes finos.
 - Selector de línea negra o blanca.
 - Alertas de **choque (CLP)** y **obstáculo (NEAR)** que detienen el robot, hacen vibrar el celular y bloquean el arranque hasta confirmarlas.
@@ -161,7 +169,7 @@ La interfaz vive en [`web/`](web). Después de editarla, regenera el archivo que
 python3 web/build.py
 ```
 
-Esto actualiza `firmware/seguidor_web/web_ui.h` y `docs/ui_preview.html`, un render con un robot simulado que puedes abrir en el navegador sin tener el ESP32.
+Esto actualiza el `web_ui.h` de `seguidor_web` y `seguidor_wifi`, y `docs/ui_preview.html`, un render con un robot simulado que puedes abrir en el navegador sin tener el ESP32.
 
 ## Documentación
 

@@ -1,6 +1,6 @@
 # Calibración y control PID
 
-Esta guía cubre el testbench y el seguidor PID básico. Todo lo que dice del PID aplica también a `firmware/seguidor_web`, que usa el mismo control.
+Esta guía cubre el testbench y el seguidor PID básico. Todo lo que dice del PID aplica también a `firmware/seguidor_web` y `firmware/seguidor_wifi`, que usan el mismo control.
 
 | Carpeta | Para qué sirve |
 |---|---|
