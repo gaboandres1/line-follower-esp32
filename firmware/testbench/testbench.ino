@@ -112,6 +112,13 @@ bool keyPressed() {
   return true;
 }
 
+// Descarta lo que quede en el buffer (p. ej. el fin de línea del comando, que puede
+// llegar unos ms después). Si no, keyPressed() detendría la prueba de motor apenas empieza.
+void flushInput() {
+  delay(30);
+  while (Serial.available()) Serial.read();
+}
+
 // ======================= SENSORES =======================
 // Lee cada sensor N veces y devuelve el valor mayoritario (filtra ruido)
 void sampleSensors(int out[5], int n = 40) {
@@ -162,10 +169,14 @@ void spinChannel(int ch, int dir) {
   Serial.print("   Girando canal "); Serial.print(ch == CH_A ? "A (ENA/IN1/IN2)" : "B (ENB/IN3/IN4)");
   Serial.print(dir > 0 ? " sentido +" : " sentido -");
   Serial.print(" a velocidad "); Serial.println(testSpeed);
+  flushInput();
   driveChannel(ch, dir * testSpeed);
   unsigned long t0 = millis();
-  while (millis() - t0 < TEST_MS && !keyPressed()) delay(5);
+  bool stopped = false;
+  while (millis() - t0 < TEST_MS && !(stopped = keyPressed())) delay(5);
   driveChannel(ch, 0);
+  Serial.print("   Giró "); Serial.print(millis() - t0); Serial.print(" ms");
+  Serial.println(stopped ? " (detenido por una tecla)" : "");
 }
 
 // Usa la configuración calibrada: role 0 = izquierdo, 1 = derecho. speed > 0 = adelante.
@@ -184,6 +195,7 @@ void testConfig() {
   }
   const char* names[4] = {"rueda IZQUIERDA adelante", "rueda DERECHA adelante",
                           "ambas ADELANTE", "ambas ATRÁS"};
+  flushInput();
   for (int step = 0; step < 4; step++) {
     Serial.print("   Prueba: "); Serial.println(names[step]);
     int l = 0, r = 0;
