@@ -14,6 +14,7 @@ El mismo seguidor PID, pero el ESP32 **crea su propia red WiFi** y sirve un pane
 - Panel en `/`: arrancar/detener, sliders de velocidad y PID, color de línea y alertas.
 - Métricas en `/metrics` y JSON en `/api/metrics`.
 - Control PID en una tarea de FreeRTOS fijada al núcleo 1, con periodo exacto de 10 ms.
+- **Línea perdida:** pasado `LOST_TIMEOUT_MS` gira en el lugar buscándola y retoma el PID al encontrarla. El panel muestra *Buscando la línea* (`SEARCH_ON_LOST`, `SEARCH_SPEED`, `SEARCH_TIMEOUT_MS`).
 - Alertas de **choque (CLP)** y **obstáculo (NEAR)** con filtro integrador (`INPUT_FILTER_N`). Detienen el robot y bloquean el arranque hasta confirmarlas con *Entendido* o con **BOOT**.
 - Parámetros guardados en la flash (NVS): 3 s después del último cambio, como mucho cada 10 s y **solo con el robot detenido**.
 - La API rechaza valores que no sean números (`nan`, `inf`, texto) y, al encender, corrige lo guardado si quedó inválido.

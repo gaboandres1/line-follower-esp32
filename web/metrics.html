@@ -62,7 +62,7 @@
     hist.push({ e: m.err, u: m.u }); if (hist.length > N) hist.shift();
     draw();
     kv("m-ctl", [
-      ["Estado", m.run ? "corriendo" : "detenido"],
+      ["Estado", m.run ? (m.search ? "buscando la línea" : "corriendo") : "detenido"],
       ["Error e", sgn(m.err)],
       ["P = Kp·e", sgn(m.p, 1)], ["I = Ki·Σe", sgn(m.i, 1)], ["D = Kd·Δe", sgn(m.d, 1)],
       ["Acción u", sgn(m.u, 1)],
@@ -83,6 +83,7 @@
       ["Alarma actual", ALARM[m.alarm] || m.alarm],
       ["Alarmas totales", m.alarms],
       ["Veces que perdió la línea", m.lost_events],
+      ["Búsquedas de línea", m.searches],
       ["Tiempo corriendo", dur(m.run_ms)],
     ]);
     kv("m-sys", [

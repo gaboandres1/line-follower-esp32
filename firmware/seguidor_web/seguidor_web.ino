@@ -76,7 +76,10 @@ const bool  ALLOW_REVERSE   = true;   // una rueda puede ir hacia atrás en curv
 const float INTEGRAL_LIMIT  = 50.0;   // anti-windup
 const unsigned long LOOP_MS = 10;     // periodo del control (ms)
 const float LOST_ERROR      = 3.0;
-const unsigned long LOST_TIMEOUT_MS = 1000;
+const unsigned long LOST_TIMEOUT_MS = 1000;   // tras este tiempo sin línea: busca (o se detiene)
+const bool  SEARCH_ON_LOST  = true;   // true: al perder la línea gira en el lugar hasta encontrarla; false: se detiene
+const int   SEARCH_SPEED    = 120;    // PWM del giro de búsqueda (también lo limita la velocidad máxima)
+const unsigned long SEARCH_TIMEOUT_MS = 0;  // tiempo máximo buscando antes de detenerse; 0 = sin límite
 const bool  USE_BUMPER      = true;   // CLP detiene el robot (emergencia)
 const bool  USE_NEAR        = true;   // NEAR detiene el robot (emergencia)
 const int   INPUT_FILTER_N  = 3;      // filtro de CLP/NEAR: lecturas activas netas para alarmar (3 x 10 ms)
@@ -108,6 +111,7 @@ enum Alarm { AL_NONE, AL_CLP, AL_NEAR, AL_LOST };
 const char* ALARM_NAME[] = {"none", "clp", "near", "lost"};
 
 volatile bool running = false, reqStart = false, reqStop = false;
+volatile bool searching = false;      // girando en el lugar para reencontrar la línea
 volatile int  alarmState = AL_NONE;   // (no se llama "alarm": choca con una función del sistema)
 
 // Métricas: las escribe la tarea de control y las lee el servidor web
@@ -116,7 +120,7 @@ struct Metrics {
   float err, p, i, d, u; int l, r;
   int clp, nearV;
   float loopHz; uint32_t execUs, execMaxUs;
-  uint32_t lostEvents, alarms, runMs;
+  uint32_t lostEvents, searches, alarms, runMs;
 } M;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -239,9 +243,23 @@ void controlStep() {
   if (running) {
     if (USE_BUMPER && clpHit)       raiseAlarm(AL_CLP);
     else if (USE_NEAR && nearHit)   raiseAlarm(AL_NEAR);
-    else if (count == 0 && now - lastSeen > LOST_TIMEOUT_MS) raiseAlarm(AL_LOST);
+    else if (count == 0 && now - lastSeen > LOST_TIMEOUT_MS) {
+      // Sin línea más de LOST_TIMEOUT_MS: gira en el lugar hacia donde la vio por
+      // última vez (el signo de e) hasta encontrarla, o se detiene si no hay búsqueda.
+      bool expired = SEARCH_TIMEOUT_MS && now - lastSeen > LOST_TIMEOUT_MS + SEARCH_TIMEOUT_MS;
+      if (!SEARCH_ON_LOST || expired) raiseAlarm(AL_LOST);
+      else {
+        if (!searching) { searching = true; portENTER_CRITICAL(&mux); M.searches++; portEXIT_CRITICAL(&mux); }
+        int s = constrain(SEARCH_SPEED, 0, maxs), back = ALLOW_REVERSE ? -s : 0;
+        l = (e > 0) ? s : back;                  // e > 0: la línea quedó a la derecha → gira a la derecha
+        r = (e > 0) ? back : s;
+        driveChannel(LEFT_CHANNEL,  l, LEFT_INVERT);
+        driveChannel(RIGHT_CHANNEL, r, RIGHT_INVERT);
+      }
+    }
     else {
       if (count > 0) lastSeen = now;
+      if (searching) { searching = false; integral = 0; lastError = e; }   // la encontró: retoma el PID sin saltos
       if (count == 0 && !wasLost) { portENTER_CRITICAL(&mux); M.lostEvents++; portEXIT_CRITICAL(&mux); }
       integral = constrain(integral + e, -INTEGRAL_LIMIT, INTEGRAL_LIMIT);
       tp = p.kp * e; ti = p.ki * integral; td = p.kd * (e - lastError);
@@ -252,6 +270,7 @@ void controlStep() {
       driveChannel(RIGHT_CHANNEL, r, RIGHT_INVERT);
     }
   }
+  if (!running) searching = false;
   wasLost = (count == 0);
   lastError = e;
   digitalWrite(LED_PIN, running);
@@ -377,9 +396,9 @@ void handleState() {
   char name[70], ssid[70]; jsonEsc(ROBOT_NAME, name, sizeof name); jsonEsc(AP_SSID, ssid, sizeof ssid);
   char buf[520];
   snprintf(buf, sizeof buf,
-    "{\"name\":\"%s\",\"ssid\":\"%s\",\"run\":%d,\"alarm\":\"%s\",\"s\":\"%s\",\"e\":%.2f,\"l\":%d,\"r\":%d,"
+    "{\"name\":\"%s\",\"ssid\":\"%s\",\"run\":%d,\"search\":%d,\"alarm\":\"%s\",\"s\":\"%s\",\"e\":%.2f,\"l\":%d,\"r\":%d,"
     "\"kp\":%.2f,\"ki\":%.3f,\"kd\":%.1f,\"base\":%d,\"max\":%d,\"line\":%d,\"dirty\":%d,\"saveIn\":%ld}",
-    name, ssid, running ? 1 : 0, ALARM_NAME[alarmState], on, m.err, m.l, m.r,
+    name, ssid, running ? 1 : 0, searching ? 1 : 0, ALARM_NAME[alarmState], on, m.err, m.l, m.r,
     P.kp, P.ki, P.kd, P.base, P.maxs, P.line, dirty ? 1 : 0, saveInMs());
   sendJson(buf);
 }
@@ -389,15 +408,15 @@ void handleMetrics() {
   char ssid[70]; jsonEsc(AP_SSID, ssid, sizeof ssid);
   char buf[1024];
   snprintf(buf, sizeof buf,
-    "{\"fw\":\"%s\",\"up\":%lu,\"run\":%d,\"alarm\":\"%s\",\"raw\":\"%s\",\"on\":\"%s\",\"count\":%d,"
+    "{\"fw\":\"%s\",\"up\":%lu,\"run\":%d,\"search\":%d,\"alarm\":\"%s\",\"raw\":\"%s\",\"on\":\"%s\",\"count\":%d,"
     "\"err\":%.2f,\"p\":%.2f,\"i\":%.2f,\"d\":%.2f,\"u\":%.2f,\"l\":%d,\"r\":%d,\"clp\":%d,\"near\":%d,"
-    "\"loop_hz\":%.1f,\"exec_us\":%u,\"exec_max_us\":%u,\"lost_events\":%u,\"alarms\":%u,\"run_ms\":%u,"
+    "\"loop_hz\":%.1f,\"exec_us\":%u,\"exec_max_us\":%u,\"lost_events\":%u,\"searches\":%u,\"alarms\":%u,\"run_ms\":%u,"
     "\"kp\":%.2f,\"ki\":%.3f,\"kd\":%.1f,\"base\":%d,\"max\":%d,\"line\":%d,"
     "\"heap\":%u,\"heap_min\":%u,\"clients\":%d,\"ssid\":\"%s\",\"ip\":\"%s\",\"dns\":\"%s\","
     "\"saves\":%u,\"dirty\":%d,\"last_save_s\":%ld}",
-    FW_VERSION, millis(), running ? 1 : 0, ALARM_NAME[alarmState], raw, on, m.count,
+    FW_VERSION, millis(), running ? 1 : 0, searching ? 1 : 0, ALARM_NAME[alarmState], raw, on, m.count,
     m.err, m.p, m.i, m.d, m.u, m.l, m.r, m.clp, m.nearV,
-    m.loopHz, (unsigned)m.execUs, (unsigned)m.execMaxUs, (unsigned)m.lostEvents, (unsigned)m.alarms, (unsigned)m.runMs,
+    m.loopHz, (unsigned)m.execUs, (unsigned)m.execMaxUs, (unsigned)m.lostEvents, (unsigned)m.searches, (unsigned)m.alarms, (unsigned)m.runMs,
     P.kp, P.ki, P.kd, P.base, P.maxs, P.line,
     (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(), WiFi.softAPgetStationNum(),
     ssid, AP_IP.toString().c_str(), DNS_NAME,

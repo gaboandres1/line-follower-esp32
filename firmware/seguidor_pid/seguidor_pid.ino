@@ -60,7 +60,10 @@ const float INTEGRAL_LIMIT = 50.0;// anti-windup: tope del acumulado integral
 
 const unsigned long LOOP_MS = 10; // periodo fijo del control (ms)
 const float LOST_ERROR = 3.0;     // error que se asume al perder la línea (más que el extremo, 2.0)
-const unsigned long LOST_TIMEOUT_MS = 1000;  // si pierde la línea más de esto, se detiene
+const unsigned long LOST_TIMEOUT_MS = 1000;  // tras este tiempo sin línea: busca (o se detiene)
+const bool  SEARCH_ON_LOST  = true;   // true: al perder la línea gira en el lugar hasta encontrarla; false: se detiene
+const int   SEARCH_SPEED    = 120;    // PWM del giro de búsqueda (también lo limita la velocidad máxima)
+const unsigned long SEARCH_TIMEOUT_MS = 0;  // tiempo máximo buscando antes de detenerse; 0 = sin límite
 
 const bool USE_BUMPER = false;    // true: se detiene si se presiona CLP
 const bool USE_NEAR   = false;    // true: se detiene ante un obstáculo
@@ -81,6 +84,7 @@ const float WEIGHTS[5] = {-2, -1, 0, 1, 2};   // posición de cada sensor, de iz
 
 bool  running = false;
 bool  justStarted = false;           // evita el salto del derivativo en el primer ciclo
+bool  searching = false;             // girando en el lugar para reencontrar la línea
 float lastError = 0, integral = 0;
 unsigned long lastLoop = 0, lastSeen = 0;
 int debugCount = 0;
@@ -179,7 +183,7 @@ void checkButton() {
     prev = now;
     if (now == LOW) {                     // flanco de bajada = se presionó
       running = !running;
-      integral = 0; lastError = 0; lastSeen = millis(); justStarted = running;
+      integral = 0; lastError = 0; lastSeen = millis(); justStarted = running; searching = false;
       if (!running) stopMotors();
       digitalWrite(LED_PIN, running);
       Serial.println(running ? ">> CORRIENDO" : ">> DETENIDO");
@@ -231,15 +235,33 @@ void loop() {
   }
 
   if (hit) {                              // choque u obstáculo: se queda detenido hasta presionar BOOT
-    running = false; stopMotors(); digitalWrite(LED_PIN, LOW);
+    running = false; searching = false; stopMotors(); digitalWrite(LED_PIN, LOW);
     Serial.println(">> CHOQUE / OBSTÁCULO: detenido. Presiona BOOT para seguir.");
     return;
   }
 
-  if (count > 0) lastSeen = now;
+  if (count > 0) {
+    lastSeen = now;
+    if (searching) {                      // la encontró: retoma el PID sin saltos
+      searching = false; integral = 0; justStarted = true;
+      Serial.println(">> LÍNEA ENCONTRADA");
+    }
+  }
   else if (now - lastSeen > LOST_TIMEOUT_MS) {   // perdió la línea demasiado tiempo
-    running = false; stopMotors(); digitalWrite(LED_PIN, LOW);
-    Serial.println(">> LÍNEA PERDIDA: detenido. Presiona BOOT para seguir.");
+    bool expired = SEARCH_TIMEOUT_MS && now - lastSeen > LOST_TIMEOUT_MS + SEARCH_TIMEOUT_MS;
+    if (!SEARCH_ON_LOST || expired) {
+      running = false; searching = false; stopMotors(); digitalWrite(LED_PIN, LOW);
+      Serial.println(">> LÍNEA PERDIDA: detenido. Presiona BOOT para seguir.");
+      return;
+    }
+    // Búsqueda: gira en el lugar hacia donde la vio por última vez (signo de lastError)
+    if (!searching) { searching = true; Serial.println(">> LÍNEA PERDIDA: buscando..."); }
+    float e = computeError(onLine, 0);    // ±LOST_ERROR
+    int s = min(SEARCH_SPEED, MAX_SPEED), back = ALLOW_REVERSE ? -s : 0;
+    int l = (e > 0) ? s : back, r = (e > 0) ? back : s;
+    setMotors(l, r);
+    lastError = e;
+    debugPrint(onLine, e, 0, l, r);
     return;
   }
 

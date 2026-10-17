@@ -154,6 +154,7 @@ Valores de partida: `Kp = 45`, `Ki = 0`, `Kd = 120`, `BASE = 140`, `MAX = 210`. 
 - Variante **`seguidor_wifi`**: el robot se une a tu red WiFi (DHCP o IP fija) y el panel se abre por su IP, sin DNS.
 - Botón de arrancar/detener, sliders de velocidad y PID con botones − / + para ajustes finos.
 - Selector de línea negra o blanca.
+- Si pierde la línea, gira en el lugar buscándola y el panel avisa *Buscando la línea*.
 - Alertas de **choque (CLP)** y **obstáculo (NEAR)**, con filtro anti-ruido, que detienen el robot, hacen vibrar el celular y bloquean el arranque hasta confirmarlas (en el panel o con BOOT).
 - Los valores se guardan en la flash solo 3 s después del último cambio, nunca más de una vez cada 10 s y solo con el robot detenido. Los valores inválidos se rechazan.
 - `/metrics`: gráfico del error, términos P/I/D, PWM, sensores crudos, frecuencia del lazo, memoria y guardados.

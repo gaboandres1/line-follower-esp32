@@ -85,7 +85,10 @@ Definen el comportamiento. Son las que vas a ajustar en la pista.
 | `INTEGRAL_LIMIT` | `50` | tope del término integral (anti-windup). |
 | `LOOP_MS` | `10` | periodo fijo del control, en ms. |
 | `LOST_ERROR` | `3.0` | error que se asume al perder la línea. |
-| `LOST_TIMEOUT_MS` | `1000` | si pierde la línea más de este tiempo, se detiene. |
+| `LOST_TIMEOUT_MS` | `1000` | tiempo sin ver la línea antes de pasar a **buscarla** (o detenerse, si la búsqueda está desactivada). |
+| `SEARCH_ON_LOST` | `true` | `true`: al perder la línea gira en el lugar hasta encontrarla. `false`: se detiene. |
+| `SEARCH_SPEED` | `120` | PWM del giro de búsqueda (también limitado por la velocidad máxima). |
+| `SEARCH_TIMEOUT_MS` | `0` | tiempo máximo buscando antes de detenerse. `0` = busca sin límite. |
 | `USE_BUMPER` / `USE_NEAR` | `false` | detenerse al chocar o al detectar un obstáculo. El robot **queda detenido** hasta presionar BOOT. |
 | `INPUT_FILTER_N` | `3` | filtro de CLP y NEAR: cuántas lecturas activas netas hacen falta para detenerse (3 × 10 ms = 30 ms). Ver sección 4. |
 | `DEBUG_SERIAL` | `true` | imprime telemetría en el Monitor Serie. |
@@ -164,10 +167,20 @@ El sentido "+" de un canal significa INx1 = HIGH, INx2 = LOW. Es la misma conven
 
 Mientras está detenido, el Monitor Serie muestra lo que ven los sensores: sirve para confirmar que el centro marca `[..#..]` sobre la línea.
 
-El robot se detiene solo en dos casos, y en ambos **queda detenido hasta que presiones BOOT** (no vuelve a moverse por su cuenta):
+### Si pierde la línea
 
-- pierde la línea más de `LOST_TIMEOUT_MS`;
-- con `USE_BUMPER` / `USE_NEAR` en `true`, choca (CLP) o detecta un obstáculo (NEAR).
+1. **Primer segundo** (`LOST_TIMEOUT_MS`): sigue avanzando con el PID y el error en ±3, es decir, gira fuerte hacia donde vio la línea por última vez. Casi siempre la recupera así en las curvas cerradas.
+2. **Después: búsqueda.** Con `SEARCH_ON_LOST = true`, **gira en el lugar** hacia ese mismo lado a `SEARCH_SPEED`. El Monitor Serie muestra `>> LÍNEA PERDIDA: buscando...`.
+3. **En cuanto un sensor ve la línea**, muestra `>> LÍNEA ENCONTRADA` y retoma el PID desde cero, sin tirón del derivativo.
+
+Con `ALLOW_REVERSE = false` no puede girar en el lugar: pivota sobre la rueda interior, que queda quieta. Si `SEARCH_TIMEOUT_MS` es mayor que 0 y no la encuentra en ese tiempo, se detiene. Con `SEARCH_ON_LOST = false` se detiene al pasar `LOST_TIMEOUT_MS`, como antes.
+
+### Cuándo se detiene solo
+
+En estos casos **queda detenido hasta que presiones BOOT** (no vuelve a moverse por su cuenta):
+
+- con `USE_BUMPER` / `USE_NEAR` en `true`, choca (CLP) o detecta un obstáculo (NEAR);
+- no encuentra la línea, si la búsqueda está desactivada o se acabó `SEARCH_TIMEOUT_MS`.
 
 ### Filtro de CLP y NEAR
 
@@ -197,7 +210,7 @@ El error es el **promedio de los pesos de los sensores que ven la línea**:
 | `..#..` | 0 | sigue recto |
 | `...##` | +1.5 | la línea está a la derecha: gira a la derecha |
 | `#....` | −2 | gira fuerte a la izquierda |
-| `.....` | ±3 | perdió la línea: sigue girando hacia donde la vio por última vez |
+| `.....` | ±3 | perdió la línea: sigue girando hacia donde la vio por última vez; pasado `LOST_TIMEOUT_MS`, la busca girando en el lugar |
 | `#####` | 0 | cruce o marca transversal: sigue recto |
 
 ### El control

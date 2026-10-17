@@ -81,7 +81,10 @@ Los cambios se aplican **al instante** al robot, incluso mientras corre.
 |---|---|---|
 | **Emergencia: choque** (roja) | se presiona el CLP mientras corre | se detiene. **No se puede volver a arrancar** hasta confirmarla: tocar *Entendido* en el panel o presionar **BOOT** una vez. El celular vibra. |
 | **Emergencia: obstáculo** (roja) | NEAR detecta algo mientras corre | igual que la anterior |
-| **Línea perdida** (ámbar) | más de `LOST_TIMEOUT_MS` sin ver la línea | se detiene; se puede volver a arrancar directamente |
+| **Buscando la línea** (ámbar) | más de `LOST_TIMEOUT_MS` sin ver la línea | gira en el lugar hacia donde la vio por última vez y retoma el PID al encontrarla. Es solo un aviso: desaparece solo y no hay que confirmarlo. |
+| **Línea perdida** (ámbar) | la búsqueda está desactivada (`SEARCH_ON_LOST = false`) o se acabó `SEARCH_TIMEOUT_MS` | se detiene; se puede volver a arrancar directamente |
+
+La búsqueda se configura con `SEARCH_ON_LOST`, `SEARCH_SPEED` y `SEARCH_TIMEOUT_MS` (por defecto busca sin límite de tiempo a PWM 120). Detalles en [calibracion_y_pid.md](calibracion_y_pid.md#si-pierde-la-línea).
 
 Las emergencias se activan con `USE_BUMPER` y `USE_NEAR` (ambas en `true`). Si el NEAR se dispara solo, ajusta su potenciómetro, sube `INPUT_FILTER_N` o pon `USE_NEAR = false`.
 
@@ -121,7 +124,7 @@ Página técnica que se actualiza cada 200 ms:
 - **Gráfico** de los últimos 30 s: el error (verde, de −3 a +3) y la acción de control `u` (gris, dividida entre 100).
 - **Control:** estado, error, los tres términos P, I y D por separado, `u`, PWM de cada rueda, constantes actuales, frecuencia real del lazo (debería ser ~100 Hz) y tiempo de cálculo por ciclo.
 - **Sensores:** lectura cruda S1…S5, lo que interpreta como línea (de izquierda a derecha, ya con `S1_IS_LEFT`, `BLACK_VALUE` y `LINE_COLOR` aplicados), cuántos ven la línea, y CLP/NEAR en crudo.
-- **Eventos:** alarma actual, alarmas totales, veces que perdió la línea y tiempo corriendo.
+- **Eventos:** alarma actual, alarmas totales, veces que perdió la línea, búsquedas de línea y tiempo corriendo. El estado dice *buscando la línea* mientras gira para encontrarla.
 - **Sistema:** tiempo encendido, clientes conectados, memoria libre, guardados en flash, último guardado y versión del firmware.
 
 Los mismos datos están en JSON crudo en `/api/metrics`, por si quieres leerlos desde un script.

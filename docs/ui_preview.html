@@ -109,7 +109,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
 /* Robot simulado: responde a las mismas rutas que el ESP32 (/api/...). */
 (() => {
   const S = { run: 1, alarm: "none", kp: 45, ki: 0, kd: 120, base: 140, max: 210, line: 0,
-    dirty: 0, lastChange: 0, lastSave: Date.now() - 95000, saves: 14, alarms: 0, lostEv: 2, runMs: 61000,
+    dirty: 0, lastChange: 0, lastSave: Date.now() - 95000, saves: 14, alarms: 0, lostEv: 2, searches: 1, runMs: 61000,
     t0: Date.now(), lastE: 0, integ: 0, lostUntil: 0, lastRun: Date.now() };
   const W = [-2, -1, 0, 1, 2], clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   let snap = null;
@@ -128,6 +128,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
       p = S.kp * e; i = S.ki * S.integ; d = S.kd * (e - S.lastE); u = p + i + d;
       const mx = S.max, b = Math.min(S.base, mx);
       l = Math.round(clamp(b + u, -mx, mx)); r = Math.round(clamp(b - u, -mx, mx));
+      if (now < S.lostUntil) { p = i = d = u = 0; l = 120; r = -120; }   // buscando: gira en el lugar
     }
     S.lastE = e;
     if (S.dirty && saveIn() === 0) { S.dirty = 0; S.saves++; S.lastSave = now; }
@@ -141,15 +142,15 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
     return Math.max(0, 3000 - (now - S.lastChange), 10000 - (now - S.lastSave));
   }
   function state() {
-    return { name: "mirobot", ssid: "MiRobot", run: S.run, alarm: S.alarm, s: snap.on, e: snap.e, l: snap.l, r: snap.r,
+    return { name: "mirobot", ssid: "MiRobot", run: S.run, search: S.run && Date.now() < S.lostUntil ? 1 : 0, alarm: S.alarm, s: snap.on, e: snap.e, l: snap.l, r: snap.r,
       kp: S.kp, ki: S.ki, kd: S.kd, base: S.base, max: S.max, line: S.line, dirty: S.dirty, saveIn: saveIn() };
   }
   function metrics() {
     const now = Date.now();
-    return { fw: "web-1.0", up: now - S.t0 + 734000, run: S.run, alarm: S.alarm, raw: snap.raw, on: snap.on, count: snap.count,
+    return { fw: "web-1.0", up: now - S.t0 + 734000, run: S.run, search: S.run && now < S.lostUntil ? 1 : 0, alarm: S.alarm, raw: snap.raw, on: snap.on, count: snap.count,
       err: snap.e, p: snap.p, i: snap.i, d: snap.d, u: snap.u, l: snap.l, r: snap.r, clp: S.alarm === "clp" ? 0 : 1,
       near: S.alarm === "near" ? 0 : 1, loop_hz: 99.6 + Math.random() * 0.8, exec_us: 38 + Math.round(Math.random() * 14),
-      exec_max_us: 71 + Math.round(Math.random() * 20), lost_events: S.lostEv, alarms: S.alarms, run_ms: S.runMs,
+      exec_max_us: 71 + Math.round(Math.random() * 20), lost_events: S.lostEv, searches: S.searches, alarms: S.alarms, run_ms: S.runMs,
       kp: S.kp, ki: S.ki, kd: S.kd, base: S.base, max: S.max, line: S.line, heap: 241380 - Math.round(Math.random() * 900),
       heap_min: 236912, clients: 1, ssid: "MiRobot", ip: "192.168.4.1", dns: "mirobot.com", saves: S.saves,
       dirty: S.dirty, last_save_s: Math.round((now - S.lastSave) / 1000) };
@@ -157,7 +158,8 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
   function raise(a) { S.run = 0; S.alarm = a; S.alarms++; if (a === "lost") { S.lostEv++; S.lostUntil = Date.now() + 1500; } }
   document.getElementById("sim-clp").onclick = () => raise("clp");
   document.getElementById("sim-near").onclick = () => raise("near");
-  document.getElementById("sim-lost").onclick = () => raise("lost");
+  // línea perdida: como el robot, gira en el lugar buscándola y la reencuentra a los 2.5 s
+  document.getElementById("sim-lost").onclick = () => { if (S.run) { S.lostEv++; S.searches++; S.lostUntil = Date.now() + 2500; } };
 
   window.fetch = async (url) => {
     const u = new URL(url, "http://mirobot.com"), q = u.searchParams;
@@ -243,6 +245,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
     near: ["Emergencia: obstáculo", "Hay algo frente al robot. Se detuvo.", "bad"],
     lost: ["Línea perdida", "No encontró la línea y se detuvo.", "warn"],
   };
+  const SEARCH = ["Buscando la línea", "La perdió y está girando para encontrarla.", "warn"];
   const busy = {}, lastSent = {}, trail = {};
   let st = null, lastAlarm = "none";
 
@@ -303,13 +306,15 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
     $("p-err").textContent = (s.e >= 0 ? "+" : "") + s.e.toFixed(1);
     $("p-l").textContent = s.l; $("p-r").textContent = s.r;
     // alerta
-    const a = ALERTS[s.alarm], box = $("p-alert");
-    box.hidden = !a;
-    if (a) {
-      box.className = "alert " + a[2]; $("p-alert-t").textContent = a[0]; $("p-alert-d").textContent = a[1];
-      if (s.alarm !== lastAlarm && navigator.vibrate) navigator.vibrate(a[2] === "bad" ? [200, 100, 200] : 120);
+    const a = ALERTS[s.alarm], box = $("p-alert"), shown = a || (s.search ? SEARCH : null);
+    const key = a ? s.alarm : s.search ? "search" : "none";
+    box.hidden = !shown;
+    $("p-ack").hidden = !a;                    // la búsqueda es solo un aviso: no hay nada que confirmar
+    if (shown) {
+      box.className = "alert " + shown[2]; $("p-alert-t").textContent = shown[0]; $("p-alert-d").textContent = shown[1];
+      if (key !== lastAlarm && navigator.vibrate) navigator.vibrate(shown[2] === "bad" ? [200, 100, 200] : 120);
     }
-    lastAlarm = s.alarm;
+    lastAlarm = key;
     // botón
     const run = $("p-run"), blocked = a && a[2] === "bad";
     run.disabled = !!blocked;
@@ -398,7 +403,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
     hist.push({ e: m.err, u: m.u }); if (hist.length > N) hist.shift();
     draw();
     kv("m-ctl", [
-      ["Estado", m.run ? "corriendo" : "detenido"],
+      ["Estado", m.run ? (m.search ? "buscando la línea" : "corriendo") : "detenido"],
       ["Error e", sgn(m.err)],
       ["P = Kp·e", sgn(m.p, 1)], ["I = Ki·Σe", sgn(m.i, 1)], ["D = Kd·Δe", sgn(m.d, 1)],
       ["Acción u", sgn(m.u, 1)],
@@ -419,6 +424,7 @@ body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans)}
       ["Alarma actual", ALARM[m.alarm] || m.alarm],
       ["Alarmas totales", m.alarms],
       ["Veces que perdió la línea", m.lost_events],
+      ["Búsquedas de línea", m.searches],
       ["Tiempo corriendo", dur(m.run_ms)],
     ]);
     kv("m-sys", [

@@ -113,6 +113,7 @@ clp:  ["Emergencia: choque", "Se activó el interruptor del frente. El robot se 
 near: ["Emergencia: obstáculo", "Hay algo frente al robot. Se detuvo.", "bad"],
 lost: ["Línea perdida", "No encontró la línea y se detuvo.", "warn"],
 };
+const SEARCH = ["Buscando la línea", "La perdió y está girando para encontrarla.", "warn"];
 const busy = {}, lastSent = {}, trail = {};
 let st = null, lastAlarm = "none";
 for (const [k, f] of Object.entries(FIELDS)) {
@@ -169,13 +170,15 @@ m.classList.toggle("lost", lost);
 $("p-err").textContent = (s.e >= 0 ? "+" : "") + s.e.toFixed(1);
 $("p-l").textContent = s.l; $("p-r").textContent = s.r;
 // alerta
-const a = ALERTS[s.alarm], box = $("p-alert");
-box.hidden = !a;
-if (a) {
-box.className = "alert " + a[2]; $("p-alert-t").textContent = a[0]; $("p-alert-d").textContent = a[1];
-if (s.alarm !== lastAlarm && navigator.vibrate) navigator.vibrate(a[2] === "bad" ? [200, 100, 200] : 120);
+const a = ALERTS[s.alarm], box = $("p-alert"), shown = a || (s.search ? SEARCH : null);
+const key = a ? s.alarm : s.search ? "search" : "none";
+box.hidden = !shown;
+$("p-ack").hidden = !a;                    // la búsqueda es solo un aviso: no hay nada que confirmar
+if (shown) {
+box.className = "alert " + shown[2]; $("p-alert-t").textContent = shown[0]; $("p-alert-d").textContent = shown[1];
+if (key !== lastAlarm && navigator.vibrate) navigator.vibrate(shown[2] === "bad" ? [200, 100, 200] : 120);
 }
-lastAlarm = s.alarm;
+lastAlarm = key;
 // botón
 const run = $("p-run"), blocked = a && a[2] === "bad";
 run.disabled = !!blocked;
@@ -326,7 +329,7 @@ last = Date.now();
 hist.push({ e: m.err, u: m.u }); if (hist.length > N) hist.shift();
 draw();
 kv("m-ctl", [
-["Estado", m.run ? "corriendo" : "detenido"],
+["Estado", m.run ? (m.search ? "buscando la línea" : "corriendo") : "detenido"],
 ["Error e", sgn(m.err)],
 ["P = Kp·e", sgn(m.p, 1)], ["I = Ki·Σe", sgn(m.i, 1)], ["D = Kd·Δe", sgn(m.d, 1)],
 ["Acción u", sgn(m.u, 1)],
@@ -347,6 +350,7 @@ kv("m-evt", [
 ["Alarma actual", ALARM[m.alarm] || m.alarm],
 ["Alarmas totales", m.alarms],
 ["Veces que perdió la línea", m.lost_events],
+["Búsquedas de línea", m.searches],
 ["Tiempo corriendo", dur(m.run_ms)],
 ]);
 kv("m-sys", [
